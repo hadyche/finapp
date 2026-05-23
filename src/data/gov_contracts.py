@@ -165,3 +165,93 @@ def top_recipients(days_back: int = 30, top_n: int = 10) -> pd.DataFrame:
         .sort_values("total_amount", ascending=False)
         .head(top_n)
     )
+
+
+# Ticker → keywords used to match contract recipient names
+TICKER_TO_RECIPIENT_KEYWORDS = {
+    "LMT":  ["LOCKHEED MARTIN", "LOCKHEED"],
+    "RTX":  ["RAYTHEON", "RTX CORP"],
+    "BA":   ["BOEING"],
+    "NOC":  ["NORTHROP GRUMMAN", "NORTHROP"],
+    "GD":   ["GENERAL DYNAMICS"],
+    "LHX":  ["L3HARRIS", "L3 HARRIS"],
+    "LDOS": ["LEIDOS"],
+    "BAH":  ["BOOZ ALLEN"],
+    "SAIC": ["SAIC"],
+    "HII":  ["HUNTINGTON INGALLS"],
+    "CACI": ["CACI"],
+    "PSN":  ["PARSONS"],
+    "KTOS": ["KRATOS"],
+    "BWXT": ["BWX TECHNOLOGIES", "BWXT"],
+    "MMS":  ["MAXIMUS"],
+    "ICFI": ["ICF "],
+    "TTEK": ["TETRA TECH"],
+    "ACM":  ["AECOM"],
+    "AVAV": ["AEROVIRONMENT"],
+    "MOOG": ["MOOG"],
+    "V2X":  ["VECTRUS", "V2X"],
+    "VSE":  ["VSE CORP"],
+    "GVA":  ["GRANITE CONSTRUCTION"],
+    "PRIM": ["PRIMORIS"],
+    "DY":   ["DYCOM"],
+    "MYRG": ["MYR GROUP"],
+    "OPCH": ["OPTION CARE"],
+    "ADUS": ["ADDUS"],
+    "AXON": ["AXON"],
+    "MRCY": ["MERCURY SYSTEMS", "MERCURY"],
+    "TLS":  ["TELOS"],
+    "BBAI": ["BIGBEAR"],
+    "LEU":  ["CENTRUS"],
+    "SMR":  ["NUSCALE"],
+    "DCO":  ["DUCOMMUN"],
+    "TGI":  ["TRIUMPH GROUP"],
+    "KAMN": ["KAMAN"],
+    "MANT": ["MANTECH"],
+    "CW":   ["CURTISS"],
+    "MSFT": ["MICROSOFT"],
+    "AMZN": ["AMAZON"],
+    "GOOGL":["GOOGLE", "ALPHABET"],
+    "PLTR": ["PALANTIR"],
+    "ORCL": ["ORACLE"],
+    "IBM":  ["IBM"],
+    "UNH":  ["UNITEDHEALTH"],
+    "HCA":  ["HCA"],
+    "CVS":  ["CVS HEALTH"],
+}
+
+
+def contracts_for_ticker(ticker: str, days_back: int = 365) -> pd.DataFrame:
+    """Returns all contract awards matching a ticker's parent company."""
+    keywords = TICKER_TO_RECIPIENT_KEYWORDS.get(ticker.upper(), [])
+    if not keywords:
+        return pd.DataFrame()
+
+    df = fetch_recent_awards(days_back=days_back, limit=500)
+    if df.empty:
+        return pd.DataFrame()
+
+    df["recipient_upper"] = df["recipient"].astype(str).str.upper()
+    mask = df["recipient_upper"].apply(
+        lambda r: any(kw in r for kw in keywords)
+    )
+    return df[mask].drop(columns=["recipient_upper"]).sort_values("amount", ascending=False)
+
+
+def fed_dollar_summary(ticker: str, days_back: int = 365) -> dict:
+    """Returns total $, contract count, and agency breakdown for a ticker."""
+    df = contracts_for_ticker(ticker, days_back=days_back)
+    if df.empty:
+        return {"total": 0, "count": 0, "agencies": pd.DataFrame()}
+
+    agencies = (
+        df.groupby("agency")
+        .agg(total=("amount", "sum"), count=("amount", "count"))
+        .reset_index()
+        .sort_values("total", ascending=False)
+    )
+    return {
+        "total": float(df["amount"].sum()),
+        "count": len(df),
+        "agencies": agencies,
+        "contracts": df,
+    }
