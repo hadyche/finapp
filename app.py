@@ -161,7 +161,60 @@ tab_watch, tab_inst, tab_contracts, tab_market, tab_macro = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_watch:
-    st.subheader("Ranked Stock Watchlist")
+    title_col, info_col = st.columns([6, 1])
+    with title_col:
+        st.subheader("Ranked Stock Watchlist")
+    with info_col:
+        with st.popover("ℹ️ How scores work", use_container_width=True):
+            st.markdown("""
+#### Score Breakdown (0–100)
+
+Each stock is scored across 4 signals that are added together:
+
+---
+
+**🟢 Institutional Score (up to 60 pts)**
+Tracks what BlackRock, Vanguard & State Street are doing with their 13F filings each quarter.
+
+| Action | Points |
+|--------|--------|
+| NEW position opened | 15 pts × size multiplier |
+| Position INCREASED | 12 pts × size multiplier |
+| Position HELD | 3 pts |
+
+**Size multipliers** (why small caps score higher):
+- 🔹 Small cap (< $3B): **2×** — a new position means real conviction
+- 🔸 Mid cap ($3–15B): **1.4×** — still meaningful
+- ⬜ Large cap (> $15B): **1×** — routine index buying
+
+---
+
+**🔵 Government Contract Score (up to 30 pts)**
+Scaled from USAspending.gov contract award data.
+The top contract recipient gets 30 pts; others are scaled relative to them.
+
+---
+
+**🟠 Sector Momentum Score (up to 15 pts)**
+Based on the sector ETF (e.g. XLK for tech, ITA for defense) return over your selected time window.
+Rising sector = rising tide for stocks in it.
+
+---
+
+**🟣 Conviction Score (up to 10 pts)**
+Total dollar value held across all 3 institutions.
+Larger combined position = higher institutional conviction.
+
+---
+
+**Signal thresholds:**
+- **60+** → STRONG SIGNAL
+- **40–59** → POSITIVE SIGNAL
+- **25–39** → WATCH
+- **< 25** → WEAK
+
+> ⚠️ This is not financial advice. Past signals do not guarantee future returns.
+            """)
 
     with st.spinner("Analyzing institutional holdings & contracts..."):
         holdings_changes = load_all_holdings_changes()
@@ -297,11 +350,35 @@ with tab_watch:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_inst:
-    st.subheader("Institutional 13F Holdings — Quarter-over-Quarter Changes")
-    st.caption(
-        "Parsed from SEC EDGAR 13F-HR filings. "
-        "NEW = opened this quarter | INCREASED = added shares | DECREASED = trimmed | SOLD = exited."
-    )
+    inst_title_col, inst_info_col = st.columns([6, 1])
+    with inst_title_col:
+        st.subheader("Institutional 13F Holdings — Quarter-over-Quarter Changes")
+    with inst_info_col:
+        with st.popover("ℹ️ What is a 13F?", use_container_width=True):
+            st.markdown("""
+#### What is a 13F Filing?
+
+Any investment manager with **$100M+ in assets** must file a **Form 13F** with the SEC every quarter, listing every stock they hold.
+
+**Why it matters:**
+- BlackRock manages ~$10 **trillion**
+- Vanguard + State Street together own ~15% of every S&P 500 stock
+- When they open a NEW position in a small company, it's a powerful signal
+
+**Actions explained:**
+| Action | Meaning |
+|--------|---------|
+| 🟢 NEW | Opened a brand new position this quarter |
+| 🟩 INCREASED | Added more shares vs. last quarter |
+| ⬜ HELD | Same position, no change |
+| 🟥 DECREASED | Trimmed the position |
+| ❌ SOLD | Exited entirely |
+
+**Important lag:** 13Fs are filed **45 days after** each quarter ends.
+So Q4 (Oct–Dec) data becomes public in mid-February.
+Use for medium-term signals, not short-term trading.
+            """)
+    st.caption("NEW = opened this quarter | INCREASED = added shares | DECREASED = trimmed | SOLD = exited.")
 
     inst_tab1, inst_tab2, inst_tab3 = st.tabs(list(INSTITUTIONS.keys()))
 
@@ -378,7 +455,34 @@ with tab_inst:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_contracts:
-    st.subheader("Federal Contract Awards")
+    ct_title, ct_info = st.columns([6, 1])
+    with ct_title:
+        st.subheader("Federal Contract Awards")
+    with ct_info:
+        with st.popover("ℹ️ About this data", use_container_width=True):
+            st.markdown("""
+#### Federal Contract Data
+
+Source: **USAspending.gov** — the official U.S. government open data portal for all federal spending.
+
+**What it shows:**
+- Every contract awarded by federal agencies (DoD, DHS, HHS, DOE, etc.)
+- Grouped by NAICS industry sector
+- Filtered to the lookback window you selected in the sidebar
+
+**Why contracts matter:**
+A company winning a large federal contract gets **guaranteed revenue** — often multi-year.
+This is one of the strongest leading indicators for small/mid-cap growth, especially in:
+- Defense & aerospace
+- Cybersecurity & IT services
+- Healthcare services (Medicare/Medicaid)
+- Infrastructure & construction
+- Nuclear & clean energy
+
+**How to use it:**
+Cross-reference the top recipients with the Watchlist tab.
+If a company is getting contracts AND institutions are buying → strong signal.
+            """)
     st.caption(f"Data from USAspending.gov — past {lookback} days")
 
     with st.spinner("Fetching contract data..."):
@@ -437,8 +541,36 @@ with tab_market:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_macro:
-    st.subheader("Macroeconomic Indicators")
-    st.caption("From FRED (St. Louis Fed). Add FRED_API_KEY to .env for live data.")
+    macro_title, macro_info = st.columns([6, 1])
+    with macro_title:
+        st.subheader("Macroeconomic Indicators")
+    with macro_info:
+        with st.popover("ℹ️ Reading the indicators", use_container_width=True):
+            st.markdown("""
+#### How to Read Macro Indicators
+
+Source: **FRED** (Federal Reserve Bank of St. Louis) — the gold standard for free economic data.
+
+| Indicator | Bullish | Bearish |
+|-----------|---------|---------|
+| GDP Growth | > 2% | < 0% (recession) |
+| CPI Inflation | 2–3% | > 5% (Fed hikes rates) |
+| Unemployment | < 4% | Rising fast |
+| Fed Funds Rate | Falling | Rising (hurts growth) |
+| 10Y Treasury | Stable / falling | Spiking up |
+| Consumer Sentiment | > 80 | Dropping fast |
+
+**Yield Curve (10Y minus 2Y):**
+- **Normal** (10Y > 2Y): healthy economy
+- **Flat** (spread < 0.5%): slowdown risk
+- **Inverted** (2Y > 10Y): historically precedes recession by 12–18 months
+
+**How to combine with the Watchlist:**
+- Rising rates → favor defense, energy, financials
+- Rate cuts expected → tech and growth stocks benefit
+- Recession signal → stay defensive (healthcare, staples)
+            """)
+    st.caption("From FRED (St. Louis Fed). Add FRED_API_KEY to secrets for live data.")
 
     with st.spinner("Fetching indicators..."):
         indicators_df = load_indicators()

@@ -57,6 +57,15 @@ INDICATOR_DESCRIPTIONS = {
 
 def _get_fred_client():
     api_key = os.getenv("FRED_API_KEY")
+
+    # Also check Streamlit secrets (used when deployed on Streamlit Cloud)
+    if not api_key:
+        try:
+            import streamlit as st
+            api_key = st.secrets.get("FRED_API_KEY")
+        except Exception:
+            pass
+
     if not api_key or not FRED_AVAILABLE:
         return None
     try:
