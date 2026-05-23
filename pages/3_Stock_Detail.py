@@ -38,20 +38,17 @@ size = TICKER_SIZE.get(ticker, "large")
 head_l, head_r = st.columns([3, 1])
 with head_l:
     st.markdown(f"""
-    <div style="display:flex; align-items:baseline; gap:14px;">
-        <div class="ticker-hero">{ticker}</div>
-        <div>{size_badge_html(size)}</div>
+    <div class="detail-ticker">{ticker}</div>
+    <div class="detail-name">{quote.get('long_name', ticker)}</div>
+    <div style="margin-top:8px;">
+        <span class="pill pill-gray">{quote.get('sector') or 'Stock'}</span>
     </div>
-    <div class="company-name" style="font-size:1.1rem;">{quote.get('long_name', ticker)}</div>
-    <div class="meta-text">{quote.get('sector') or ''} {('· ' + quote.get('industry')) if quote.get('industry') else ''}</div>
     """, unsafe_allow_html=True)
 with head_r:
     fav = is_favorite(ticker)
-    if st.button("⭐ Saved" if fav else "☆ Save to Favorites", use_container_width=True, key="detail_fav"):
+    if st.button("⭐ Saved" if fav else "☆ Save", use_container_width=True, key="detail_fav"):
         toggle_favorite(ticker)
         st.rerun()
-    if quote.get("website"):
-        st.markdown(f"[🌐 Company website]({quote['website']})")
 
 # ── Live quote stats ───────────────────────────────────────────────────────────
 if quote.get("price"):

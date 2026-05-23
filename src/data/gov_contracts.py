@@ -255,3 +255,25 @@ def fed_dollar_summary(ticker: str, days_back: int = 365) -> dict:
         "agencies": agencies,
         "contracts": df,
     }
+
+
+def recent_award_feed(days_back: int = 30, min_amount: float = 5_000_000, top_n: int = 25) -> pd.DataFrame:
+    """Recent big federal awards as a chronological feed for the home page."""
+    df = fetch_recent_awards(days_back=days_back, limit=200)
+    if df.empty:
+        return pd.DataFrame()
+
+    df = df[df["amount"] >= min_amount].copy()
+
+    # Late import to avoid circular import
+    from src.analysis.watchlist import CONTRACT_COMPANY_TO_TICKER
+
+    def _map(name):
+        u = str(name).upper()
+        for key, t in CONTRACT_COMPANY_TO_TICKER.items():
+            if key in u:
+                return t
+        return None
+
+    df["ticker"] = df["recipient"].apply(_map)
+    return df.sort_values("amount", ascending=False).head(top_n).reset_index(drop=True)

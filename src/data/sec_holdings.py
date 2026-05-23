@@ -409,3 +409,17 @@ def get_all_institution_changes() -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+def recent_moves_feed(top_n: int = 25) -> pd.DataFrame:
+    """Biggest NEW and INCREASED institutional positions across all 3 firms."""
+    df = get_all_institution_changes()
+    if df.empty:
+        return df
+    df = df[df["action"].isin(["NEW", "INCREASED"])].copy()
+    # Score = value_current weighted by NEW vs INCREASED
+    df["sort_value"] = df.apply(
+        lambda r: r["value_current"] * (1.4 if r["action"] == "NEW" else 1.0),
+        axis=1,
+    )
+    return df.sort_values("sort_value", ascending=False).head(top_n).reset_index(drop=True)

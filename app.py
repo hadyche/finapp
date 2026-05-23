@@ -34,9 +34,19 @@ big_money     = st.Page("pages/6_Big_Money.py",     title="Big Money",       ico
 macro         = st.Page("pages/7_Macro.py",         title="Macro",           icon="📉")
 settings_page = st.Page("pages/8_Settings.py",      title="Settings",        icon="⚙️")
 
-nav = st.navigation({
-    "Picks":     [home, favorites, stock_detail, discover],
-    "Insights":  [gov, big_money, macro],
-    "Account":   [settings_page],
-})
+try:
+    nav = st.navigation(
+        {
+            "Picks":    [home, favorites, stock_detail, discover],
+            "Insights": [gov, big_money, macro],
+            "Account":  [settings_page],
+        },
+        position="sidebar",
+    )
+except TypeError:
+    nav = st.navigation({
+        "Picks":    [home, favorites, stock_detail, discover],
+        "Insights": [gov, big_money, macro],
+        "Account":  [settings_page],
+    })
 nav.run()
