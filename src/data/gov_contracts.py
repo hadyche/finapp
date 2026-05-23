@@ -62,10 +62,14 @@ SECTOR_MAP = {
 }
 
 
-def _naics_to_sector(naics: str) -> str:
-    if not naics or len(naics) < 2:
+def _naics_to_sector(naics) -> str:
+    try:
+        s = str(naics).strip()
+        if not s or s in ("nan", "None", "<NA>", "") or len(s) < 2:
+            return "Other"
+        return SECTOR_MAP.get(s[:2], "Other")
+    except Exception:
         return "Other"
-    return SECTOR_MAP.get(naics[:2], "Other")
 
 
 def fetch_recent_awards(days_back: int = 30, limit: int = 100) -> pd.DataFrame:
@@ -129,7 +133,7 @@ def fetch_recent_awards(days_back: int = 30, limit: int = 100) -> pd.DataFrame:
         inplace=True,
     )
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
-    df["sector"] = df["naics_code"].astype(str).apply(_naics_to_sector)
+    df["sector"] = df["naics_code"].fillna("").astype(str).apply(_naics_to_sector)
     return df
 
 
