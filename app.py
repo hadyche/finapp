@@ -1,18 +1,13 @@
 """
-Market Flow Intelligence Dashboard
-====================================
-Aggregates public data to surface where money is flowing:
-  - USAspending.gov — federal contract awards by sector
-  - SEC EDGAR 13F   — actual institutional holdings (BlackRock, Vanguard, State Street)
-  - FRED            — macroeconomic indicators
-  - yfinance        — sector ETF momentum
+FlowSignal
+==========
+Where smart money is flowing today.
 
-Produces a ranked stock watchlist of tickers where government money
-AND institutional smart money are flowing in the same direction.
+Cross-references federal contract awards + institutional 13F holdings
++ sector momentum to surface stocks with converging money flows.
 
 DISCLAIMER: For informational and educational purposes only.
-This is NOT financial advice. Past signals do not guarantee future returns.
-Always consult a licensed financial advisor before making investment decisions.
+NOT financial advice. Past signals do not guarantee future returns.
 """
 
 import streamlit as st
@@ -25,572 +20,533 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.data.gov_contracts import sector_spending_summary, top_recipients, fetch_recent_awards
+from src.data.gov_contracts import sector_spending_summary, top_recipients
 from src.data.sec_holdings import get_all_institution_changes, get_position_changes, INSTITUTIONS
-from src.data.sec_filings import get_institution_filing_summary
 from src.data.economic_indicators import fetch_all_indicators_latest, yield_curve_signal
 from src.data.market_data import fetch_sector_performance, fetch_broad_market, fetch_sector_history
-from src.analysis.scoring import build_sector_scores, signals_to_dataframe
-from src.analysis.watchlist import build_watchlist, watchlist_to_dataframe
-from src.analysis.cache import cache_get, cache_set
+from src.analysis.scoring import build_sector_scores
+from src.analysis.watchlist import (
+    build_watchlist, watchlist_to_dataframe, SIZE_LABELS
+)
 from src.ui.charts import (
-    sector_bar_chart,
-    score_heatmap,
-    sector_momentum_chart,
-    price_history_chart,
-    contract_treemap,
-    indicators_gauge_row,
+    sector_momentum_chart, price_history_chart, contract_treemap, indicators_gauge_row,
 )
 
 st.set_page_config(
-    page_title="Market Flow Intelligence",
+    page_title="FlowSignal — Where smart money flows",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-st.markdown(
-    """
-    <style>
-    .stApp { background-color: #0E1117; }
-    .disclaimer {
-        background: #1A1208;
-        border-left: 3px solid #FFD600;
-        padding: 10px 16px;
-        border-radius: 4px;
-        font-size: 0.8em;
-        color: #FFD600;
-    }
-    .signal-strong { color: #00C853; font-weight: bold; }
-    .signal-positive { color: #64DD17; }
-    .signal-neutral { color: #FFD600; }
-    .signal-weak { color: #FF6D00; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# ══════════════════════════════════════════════════════════════════════════════
+# Premium CSS
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, sans-serif !important;
+}
+
+.stApp { background: #0A0E16; }
+
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+.stDeployButton { display: none; }
+
+/* Hero */
+.hero {
+    padding: 24px 0 8px 0;
+    border-bottom: 1px solid #1F2937;
+    margin-bottom: 28px;
+}
+.brand {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #FAFAFA;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+.brand-accent { color: #00E676; }
+.brand-beta {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: #1F2937;
+    color: #9CA3AF;
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: 8px;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+}
+.tagline {
+    color: #9CA3AF;
+    font-size: 1rem;
+    margin-top: 4px;
+    font-weight: 400;
+}
+.date-row {
+    color: #6B7280;
+    font-size: 0.85rem;
+    margin-top: 12px;
+}
+
+/* Stock cards */
+.pick-card {
+    background: linear-gradient(135deg, #131A26 0%, #0F1520 100%);
+    border: 1px solid #1F2937;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+    transition: all 0.2s ease;
+}
+.pick-card:hover {
+    border-color: #00E676;
+    box-shadow: 0 8px 32px rgba(0, 230, 118, 0.08);
+}
+.pick-hero {
+    background: linear-gradient(135deg, #0F1F19 0%, #0A1610 100%);
+    border: 1px solid #00E676;
+    box-shadow: 0 8px 40px rgba(0, 230, 118, 0.12);
+}
+.pick-rank {
+    color: #6B7280;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+}
+.pick-ticker {
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: #FAFAFA;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+.pick-hero .pick-ticker {
+    font-size: 3.2rem;
+    background: linear-gradient(135deg, #00E676 0%, #4FC3F7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.pick-name {
+    font-size: 1.05rem;
+    color: #E5E7EB;
+    font-weight: 500;
+    margin-top: 4px;
+}
+.pick-meta {
+    color: #6B7280;
+    font-size: 0.82rem;
+    margin-top: 6px;
+}
+.pick-score-pill {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+    margin-top: 16px;
+}
+.score-strong { background: rgba(0, 230, 118, 0.15); color: #00E676; }
+.score-positive { background: rgba(100, 221, 23, 0.12); color: #64DD17; }
+.score-watch { background: rgba(255, 214, 0, 0.12); color: #FFD600; }
+
+.signal-row {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #1F2937;
+}
+.signal-item {
+    color: #D1D5DB;
+    font-size: 0.9rem;
+    margin: 6px 0;
+    display: flex;
+    align-items: center;
+}
+.signal-check { color: #00E676; margin-right: 8px; font-weight: 700; }
+
+/* Size badges */
+.size-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+}
+.badge-small { background: rgba(0, 230, 118, 0.15); color: #00E676; }
+.badge-mid { background: rgba(79, 195, 247, 0.15); color: #4FC3F7; }
+.badge-large { background: rgba(156, 163, 175, 0.15); color: #9CA3AF; }
+
+/* Section headers */
+.section-header {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #FAFAFA;
+    margin: 32px 0 4px 0;
+    letter-spacing: -0.02em;
+}
+.section-sub {
+    color: #6B7280;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+}
+
+/* Source badges */
+.source-pill {
+    display: inline-block;
+    background: #1F2937;
+    color: #9CA3AF;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    margin: 4px 8px 4px 0;
+    font-weight: 500;
+}
+.source-pill .check { color: #00E676; margin-right: 4px; }
+
+/* Disclaimer */
+.disclaimer {
+    background: rgba(255, 152, 0, 0.06);
+    border: 1px solid rgba(255, 152, 0, 0.2);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 32px;
+    color: #FCD34D;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+/* Streamlit overrides */
+.stButton > button {
+    background: #00E676;
+    color: #0A0E16;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 10px 20px;
+    transition: all 0.2s;
+}
+.stButton > button:hover {
+    background: #00C853;
+    transform: translateY(-1px);
+}
+div[data-testid="stExpander"] {
+    background: #131A26;
+    border: 1px solid #1F2937;
+    border-radius: 12px;
+}
+
+/* Hide the default streamlit metric styling we don't want */
+[data-testid="stMetricDelta"] svg { display: none; }
+</style>
+""", unsafe_allow_html=True)
 
 
-# ── Cached data loaders ────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Data loaders (cached)
+# ══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_sector_performance(days: int):
     return fetch_sector_performance(days_back=days)
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_contract_recipients(days: int):
+    return top_recipients(days_back=days, top_n=20)
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_contracts(days: int):
     return sector_spending_summary(days_back=days)
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_holdings():
+    return get_all_institution_changes()
 
-@st.cache_data(ttl=21600, show_spinner=False)
-def load_contract_recipients(days: int):
-    return top_recipients(days_back=days, top_n=20)
-
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_institution(name):
+    return get_position_changes(name)
 
 @st.cache_data(ttl=43200, show_spinner=False)
 def load_indicators():
     return fetch_all_indicators_latest()
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_all_holdings_changes():
-    return get_all_institution_changes()
+# ══════════════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+def size_badge_html(size: str) -> str:
+    labels = {"small": "Small Cap", "mid": "Mid Cap", "large": "Large Cap"}
+    classes = {"small": "badge-small", "mid": "badge-mid", "large": "badge-large"}
+    return f'<span class="size-badge {classes.get(size, "badge-large")}">{labels.get(size, "Stock")}</span>'
+
+def score_class(score: float) -> tuple[str, str]:
+    if score >= 60: return "score-strong", "STRONG SIGNAL"
+    if score >= 40: return "score-positive", "POSITIVE SIGNAL"
+    return "score-watch", "EARLY WATCH"
+
+def render_pick_card(entry, rank: int, is_hero: bool = False):
+    score_cls, score_label = score_class(entry.score)
+    hero_cls = "pick-hero" if is_hero else ""
+
+    signals_html = ""
+    for sig in entry.signals[:4]:
+        signals_html += f'<div class="signal-item"><span class="signal-check">✓</span>{sig}</div>'
+
+    sources_html = ""
+    if entry.buying_institutions:
+        for inst in entry.buying_institutions:
+            sources_html += f'<span class="source-pill"><span class="check">✓</span>{inst}</span>'
+
+    rank_label = "TOP PICK" if rank == 1 else f"#{rank}"
+
+    st.markdown(f"""
+    <div class="pick-card {hero_cls}">
+        <div class="pick-rank">{rank_label}  ·  {entry.sector.upper()}</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <div class="pick-ticker">{entry.ticker}</div>
+                <div class="pick-name">{entry.company}</div>
+                <div class="pick-meta">{size_badge_html(entry.size)}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="pick-score-pill {score_cls}">{score_label}</div>
+                <div class="pick-meta" style="margin-top: 8px;">Score {entry.score}/100</div>
+            </div>
+        </div>
+        <div class="signal-row">{signals_html}</div>
+        <div style="margin-top: 14px;">{sources_html}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_institution_changes(name: str):
-    return get_position_changes(name)
+# ══════════════════════════════════════════════════════════════════════════════
+# HERO
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.markdown(f"""
+<div class="hero">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <div class="brand">Flow<span class="brand-accent">Signal</span><span class="brand-beta">BETA</span></div>
+            <div class="tagline">Where smart money is flowing today.</div>
+        </div>
+    </div>
+    <div class="date-row">📅 {datetime.now().strftime('%A, %B %d, %Y')} · Auto-refreshes every 6 hours</div>
+</div>
+""", unsafe_allow_html=True)
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Settings (in a clean toolbar)
+# ══════════════════════════════════════════════════════════════════════════════
 
-with st.sidebar:
-    st.title("📈 Market Flow Intelligence")
-    st.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    st.divider()
-
+settings_col1, settings_col2, settings_col3 = st.columns([2, 2, 3])
+with settings_col1:
+    mode = st.selectbox(
+        "Show me",
+        ["🔹 Hidden Gems (small/mid cap)", "📊 All stocks"],
+        index=0,
+        label_visibility="collapsed",
+    )
+with settings_col2:
     lookback = st.selectbox(
-        "Contract lookback window",
+        "Time window",
         [7, 14, 30, 60, 90],
         index=2,
-        format_func=lambda x: f"{x} days",
+        format_func=lambda x: f"Last {x} days",
+        label_visibility="collapsed",
     )
+with settings_col3:
+    advanced_mode = st.toggle("⚙️ Advanced (show dashboard)", value=False)
 
-    st.divider()
-    st.markdown("**Data Sources**")
-    st.markdown("- [USAspending.gov](https://www.usaspending.gov)")
-    st.markdown("- [SEC EDGAR 13F](https://www.sec.gov/cgi-bin/browse-edgar)")
-    st.markdown("- [FRED](https://fred.stlouisfed.org)")
-    st.markdown("- [Yahoo Finance](https://finance.yahoo.com)")
-    st.divider()
-
-    if st.button("🔄 Refresh All Data"):
-        from src.analysis.cache import cache_bust
-        for key in ["gov_contracts", "sector_perf", "economic_indicators", "sec_filings"]:
-            cache_bust(key)
-        st.cache_data.clear()
-        st.rerun()
-
-    st.divider()
-    st.markdown(
-        '<div class="disclaimer">⚠️ NOT financial advice. '
-        "Informational only. Past signals ≠ future returns. "
-        "Consult a licensed advisor before investing.</div>",
-        unsafe_allow_html=True,
-    )
-
-# ── Main ───────────────────────────────────────────────────────────────────────
-
-st.title("Where Is Smart Money Flowing?")
-st.caption(
-    "Cross-references federal contract awards + BlackRock/Vanguard/State Street 13F holdings "
-    "to surface stocks with converging institutional and government money flows."
-)
-
-tab_watch, tab_inst, tab_contracts, tab_market, tab_macro = st.tabs([
-    "🎯 Stock Watchlist",
-    "🏦 Institutional Holdings",
-    "🏛️ Gov Contracts",
-    "📉 Market Data",
-    "📊 Macro Indicators",
-])
+hidden_gems = "Hidden Gems" in mode
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — STOCK WATCHLIST (the main output)
+# Load data once
 # ══════════════════════════════════════════════════════════════════════════════
 
-with tab_watch:
-    title_col, info_col = st.columns([6, 1])
-    with title_col:
-        st.subheader("Ranked Stock Watchlist")
-    with info_col:
-        with st.popover("ℹ️ How scores work", use_container_width=True):
+with st.spinner(""):
+    holdings = load_holdings()
+    perf = load_sector_performance(lookback)
+    recipients = load_contract_recipients(lookback)
+
+# Build watchlist (filtered to NEW + INCREASED for the home view)
+home_changes = holdings[holdings["action"].isin(["NEW", "INCREASED"])] if not holdings.empty else holdings
+watchlist = build_watchlist(home_changes, perf, recipients, hidden_gems_only=hidden_gems)
+top_picks = [w for w in watchlist if w.buying_institutions and w.score >= 25][:5]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SIMPLE HOME VIEW (default)
+# ══════════════════════════════════════════════════════════════════════════════
+
+if not advanced_mode:
+    if not top_picks:
+        st.warning("No picks meet the criteria right now. Try widening the time window.")
+    else:
+        # Hero pick (#1)
+        st.markdown('<div class="section-header">Today\'s Top Pick</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Highest confluence of institutional buying + government contracts</div>', unsafe_allow_html=True)
+        render_pick_card(top_picks[0], rank=1, is_hero=True)
+
+        # Other picks
+        if len(top_picks) > 1:
+            st.markdown('<div class="section-header">Also Worth Watching</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-sub">Other stocks with strong converging signals</div>', unsafe_allow_html=True)
+
+            for i, entry in enumerate(top_picks[1:], start=2):
+                render_pick_card(entry, rank=i, is_hero=False)
+
+        # How it works
+        with st.expander("💡 How does FlowSignal work?", expanded=False):
             st.markdown("""
-#### Score Breakdown (0–100)
+            **We watch 3 things every day:**
 
-Each stock is scored across 4 signals that are added together:
+            🏛️ **Government Contracts** — Every federal contract awarded is public data. We track who's winning the big ones in defense, tech, healthcare, and infrastructure.
 
----
+            🏦 **Institutional Holdings** — BlackRock, Vanguard, and State Street manage ~$25 trillion combined. When all three start buying the same small company, that's a powerful signal.
 
-**🟢 Institutional Score (up to 60 pts)**
-Tracks what BlackRock, Vanguard & State Street are doing with their 13F filings each quarter.
+            📈 **Sector Momentum** — We track sector ETFs to see which industries are heating up.
 
-| Action | Points |
-|--------|--------|
-| NEW position opened | 15 pts × size multiplier |
-| Position INCREASED | 12 pts × size multiplier |
-| Position HELD | 3 pts |
+            **When all three line up on the same stock**, we surface it. Small-cap signals are weighted more heavily because a new institutional position in a $500M company means far more than adding 0.01% to an Apple holding.
 
-**Size multipliers** (why small caps score higher):
-- 🔹 Small cap (< $3B): **2×** — a new position means real conviction
-- 🔸 Mid cap ($3–15B): **1.4×** — still meaningful
-- ⬜ Large cap (> $15B): **1×** — routine index buying
-
----
-
-**🔵 Government Contract Score (up to 30 pts)**
-Scaled from USAspending.gov contract award data.
-The top contract recipient gets 30 pts; others are scaled relative to them.
-
----
-
-**🟠 Sector Momentum Score (up to 15 pts)**
-Based on the sector ETF (e.g. XLK for tech, ITA for defense) return over your selected time window.
-Rising sector = rising tide for stocks in it.
-
----
-
-**🟣 Conviction Score (up to 10 pts)**
-Total dollar value held across all 3 institutions.
-Larger combined position = higher institutional conviction.
-
----
-
-**Signal thresholds:**
-- **60+** → STRONG SIGNAL
-- **40–59** → POSITIVE SIGNAL
-- **25–39** → WATCH
-- **< 25** → WEAK
-
-> ⚠️ This is not financial advice. Past signals do not guarantee future returns.
+            **Sources:** USAspending.gov · SEC EDGAR · FRED · Yahoo Finance
             """)
 
-    with st.spinner("Analyzing institutional holdings & contracts..."):
-        holdings_changes = load_all_holdings_changes()
-        perf_df = load_sector_performance(lookback)
-        recipients_df = load_contract_recipients(lookback)
+        # Disclaimer
+        st.markdown("""
+        <div class="disclaimer">
+        <strong>⚠️ Important:</strong> FlowSignal is for informational and educational purposes only.
+        This is NOT financial advice. Past signals do not guarantee future returns. Markets are
+        unpredictable. Always do your own research and consult a licensed financial advisor before
+        making any investment decisions. You assume all risk.
+        </div>
+        """, unsafe_allow_html=True)
 
-    if holdings_changes.empty:
-        st.warning("Could not load holdings data.")
-    else:
-        # ── Mode toggle ────────────────────────────────────────────────────────
-        col_mode1, col_mode2 = st.columns([1, 2])
-        with col_mode1:
-            hidden_gems = st.toggle(
-                "🔹 Hidden Gems mode",
-                value=True,
-                help="ON = small & mid-cap only (under-the-radar picks). OFF = all sizes including large cap.",
-            )
-        with col_mode2:
-            show_actions = st.multiselect(
-                "Institution action filter",
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADVANCED DASHBOARD (power users)
+# ══════════════════════════════════════════════════════════════════════════════
+
+else:
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📋 Full Watchlist",
+        "🏦 Institutions",
+        "🏛️ Gov Contracts",
+        "📊 Macro",
+    ])
+
+    with tab1:
+        st.markdown('<div class="section-header">Full Scored Watchlist</div>', unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            min_score = st.slider("Minimum score", 0, 100, 20, step=5)
+        with col2:
+            actions = st.multiselect(
+                "Institutional action",
                 ["NEW", "INCREASED", "HELD", "DECREASED"],
                 default=["NEW", "INCREASED"],
             )
+        filt_changes = holdings[holdings["action"].isin(actions)] if actions else holdings
+        full_wl = build_watchlist(filt_changes, perf, recipients, hidden_gems_only=hidden_gems)
+        full_wl = [w for w in full_wl if w.score >= min_score]
+        df = watchlist_to_dataframe(full_wl)
 
-        min_score = st.slider("Minimum score to show", 0, 100, 20, step=5)
-
-        if show_actions:
-            filtered_changes = holdings_changes[holdings_changes["action"].isin(show_actions)]
+        if df.empty:
+            st.info("No matches. Lower the score threshold or change filters.")
         else:
-            filtered_changes = holdings_changes
-
-        watchlist = build_watchlist(
-            filtered_changes, perf_df, recipients_df, hidden_gems_only=hidden_gems
-        )
-        scored = [w for w in watchlist if w.score >= min_score]
-        wl_df = watchlist_to_dataframe(scored)
-
-        if hidden_gems:
-            st.caption(
-                "🔹 Hidden Gems mode ON — showing small & mid-cap stocks only. "
-                "Small cap NEW positions score 2x, mid cap 1.4x. "
-                "These are the lesser-known names most people haven't heard of."
-            )
-        else:
-            st.caption("Showing all market caps. Toggle Hidden Gems to focus on under-the-radar picks.")
-
-        st.divider()
-
-        # ── Top 3 highlight cards ──────────────────────────────────────────────
-        top3 = [w for w in scored if w.buying_institutions][:3]
-        if top3:
-            cols = st.columns(3)
-            for i, entry in enumerate(top3):
-                with cols[i]:
-                    from src.analysis.watchlist import SIZE_LABELS
-                    size_label = SIZE_LABELS.get(entry.size, "")
-                    st.metric(
-                        label=f"#{i+1} {entry.ticker}  {size_label}",
-                        value=entry.company[:24],
-                        delta=f"Score {entry.score}/100 — {entry.recommendation}",
-                    )
-                    st.caption(f"{entry.sector} | " + " + ".join(entry.buying_institutions))
-
-        st.divider()
-
-        if wl_df.empty:
-            st.info("No stocks match these filters. Try lowering the score threshold or adjusting the action filter.")
-        else:
-            # Stacked score chart
-            chart_df = wl_df.head(20).copy()
+            chart_df = df.head(20)
             fig = go.Figure()
-            fig.add_trace(go.Bar(name="Institutional",  x=chart_df["Ticker"],
-                                  y=chart_df["Inst. Score"],    marker_color="#00C853"))
-            fig.add_trace(go.Bar(name="Gov Contracts",  x=chart_df["Ticker"],
-                                  y=chart_df["Contract"],       marker_color="#2196F3"))
-            fig.add_trace(go.Bar(name="Momentum",       x=chart_df["Ticker"],
-                                  y=chart_df["Momentum"],       marker_color="#FF9800"))
-            fig.add_trace(go.Bar(name="Conviction",     x=chart_df["Ticker"],
-                                  y=chart_df["Conviction"],     marker_color="#9C27B0"))
+            fig.add_trace(go.Bar(name="Institutional", x=chart_df["Ticker"],
+                                 y=chart_df["Inst. Score"], marker_color="#00E676"))
+            fig.add_trace(go.Bar(name="Gov Contracts", x=chart_df["Ticker"],
+                                 y=chart_df["Contract"], marker_color="#4FC3F7"))
+            fig.add_trace(go.Bar(name="Momentum", x=chart_df["Ticker"],
+                                 y=chart_df["Momentum"], marker_color="#FFB74D"))
+            fig.add_trace(go.Bar(name="Conviction", x=chart_df["Ticker"],
+                                 y=chart_df["Conviction"], marker_color="#BA68C8"))
             fig.update_layout(
-                barmode="stack",
-                title="Top Stocks — Score Breakdown (small caps boosted)",
-                template="plotly_dark",
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=430,
-                xaxis_tickangle=-45,
+                barmode="stack", template="plotly_dark",
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                height=400, xaxis_tickangle=-45,
+                margin=dict(t=20, b=80, l=20, r=20),
             )
             st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
 
-            # Size distribution pie
-            if "Size" in wl_df.columns:
-                size_counts = wl_df["Size"].value_counts().reset_index()
-                size_counts.columns = ["Size", "count"]
-                fig2 = px.pie(
-                    size_counts, names="Size", values="count",
-                    title="Watchlist Breakdown by Market Cap",
-                    template="plotly_dark",
-                    color_discrete_sequence=["#00C853", "#FF9800", "#9E9E9E"],
-                )
-                fig2.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", height=280
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+    with tab2:
+        st.markdown('<div class="section-header">Institutional 13F Holdings</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">Quarter-over-quarter position changes from SEC EDGAR</div>', unsafe_allow_html=True)
+        inst_tabs = st.tabs(list(INSTITUTIONS.keys()))
+        for tab_obj, inst_name in zip(inst_tabs, INSTITUTIONS.keys()):
+            with tab_obj:
+                ch = load_institution(inst_name)
+                if ch.empty:
+                    st.warning(f"No data for {inst_name}")
+                    continue
+                c1, c2, c3 = st.columns(3)
+                c1.metric("New positions", len(ch[ch["action"] == "NEW"]))
+                c2.metric("Increased", len(ch[ch["action"] == "INCREASED"]))
+                c3.metric("Sold/Decreased", len(ch[ch["action"].isin(["DECREASED", "SOLD"])]))
 
-            # Full table
-            st.dataframe(
-                wl_df.style.background_gradient(
-                    subset=["Score"], cmap="RdYlGn", vmin=0, vmax=100
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
+                movers = ch[ch["action"].isin(["NEW", "INCREASED"])].head(15)
+                if not movers.empty:
+                    fig = px.bar(movers, x="ticker", y="value_current", color="action",
+                                title=f"{inst_name} — top buys",
+                                color_discrete_map={"NEW": "#00E676", "INCREASED": "#64DD17"},
+                                template="plotly_dark")
+                    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                                     height=350, margin=dict(t=40, b=40, l=20, r=20))
+                    st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(ch, hide_index=True, use_container_width=True)
 
-        st.divider()
-        st.markdown(
-            """
-            **Scoring guide:**
-            | Score | Signal | Meaning |
-            |-------|--------|---------|
-            | 60+ | STRONG | Multiple institutions buying + gov contracts flowing in |
-            | 40–59 | POSITIVE | At least 1 institution actively buying |
-            | 25–39 | WATCH | Early signal, one factor present |
-            | < 25 | WEAK | Not enough confluence yet |
-
-            **Why small caps score higher:** A NEW position in a $500M company means far more than
-            adding 0.01% to an Apple position. The size multiplier reflects that.
-            """
-        )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — INSTITUTIONAL HOLDINGS (BlackRock / Vanguard / State Street)
-# ══════════════════════════════════════════════════════════════════════════════
-
-with tab_inst:
-    inst_title_col, inst_info_col = st.columns([6, 1])
-    with inst_title_col:
-        st.subheader("Institutional 13F Holdings — Quarter-over-Quarter Changes")
-    with inst_info_col:
-        with st.popover("ℹ️ What is a 13F?", use_container_width=True):
-            st.markdown("""
-#### What is a 13F Filing?
-
-Any investment manager with **$100M+ in assets** must file a **Form 13F** with the SEC every quarter, listing every stock they hold.
-
-**Why it matters:**
-- BlackRock manages ~$10 **trillion**
-- Vanguard + State Street together own ~15% of every S&P 500 stock
-- When they open a NEW position in a small company, it's a powerful signal
-
-**Actions explained:**
-| Action | Meaning |
-|--------|---------|
-| 🟢 NEW | Opened a brand new position this quarter |
-| 🟩 INCREASED | Added more shares vs. last quarter |
-| ⬜ HELD | Same position, no change |
-| 🟥 DECREASED | Trimmed the position |
-| ❌ SOLD | Exited entirely |
-
-**Important lag:** 13Fs are filed **45 days after** each quarter ends.
-So Q4 (Oct–Dec) data becomes public in mid-February.
-Use for medium-term signals, not short-term trading.
-            """)
-    st.caption("NEW = opened this quarter | INCREASED = added shares | DECREASED = trimmed | SOLD = exited.")
-
-    inst_tab1, inst_tab2, inst_tab3 = st.tabs(list(INSTITUTIONS.keys()))
-
-    for tab_obj, inst_name in zip([inst_tab1, inst_tab2, inst_tab3], INSTITUTIONS.keys()):
-        with tab_obj:
-            with st.spinner(f"Loading {inst_name} holdings..."):
-                changes_df = load_institution_changes(inst_name)
-
-            if changes_df.empty:
-                st.warning(f"No data for {inst_name}")
-                continue
-
-            # Summary metrics
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("New Positions",      len(changes_df[changes_df["action"] == "NEW"]))
-            c2.metric("Increased",          len(changes_df[changes_df["action"] == "INCREASED"]))
-            c3.metric("Decreased/Sold",     len(changes_df[changes_df["action"].isin(["DECREASED","SOLD"])]))
-            c4.metric("Total Holdings",     len(changes_df))
-
-            # Action filter
-            action_filter = st.multiselect(
-                "Filter by action",
-                ["NEW", "INCREASED", "HELD", "DECREASED", "SOLD"],
-                default=["NEW", "INCREASED"],
-                key=f"filter_{inst_name}",
-            )
-            display = changes_df[changes_df["action"].isin(action_filter)] if action_filter else changes_df
-
-            # Top movers chart
-            movers = display[display["action"].isin(["NEW","INCREASED"])].head(15)
-            if not movers.empty:
-                fig = px.bar(
-                    movers,
-                    x="ticker",
-                    y="value_current",
-                    color="action",
-                    title=f"{inst_name} — New & Increased Positions",
-                    color_discrete_map={"NEW": "#00C853", "INCREASED": "#64DD17"},
-                    template="plotly_dark",
-                )
-                fig.update_layout(
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    height=380,
-                    yaxis_title="Current Value ($)",
-                    xaxis_title="Ticker",
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-            st.dataframe(
-                display.style.background_gradient(
-                    subset=["value_change_pct"], cmap="RdYlGn", vmin=-50, vmax=50
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    st.divider()
-    st.markdown(
-        """
-        **Why 13F filings matter:**
-        - BlackRock manages ~$10 trillion — its buys/sells move markets
-        - Vanguard + State Street together hold ~15% of every S&P 500 company
-        - When all three increase the same position → very strong institutional conviction
-        - **Lag:** 13Fs are filed 45 days after quarter-end — use for medium-term signals, not trading
-
-        **Free tools to dig deeper:**
-        - [WhaleWisdom.com](https://whalewisdom.com) | [13F.info](https://13f.info) | [Fintel.io](https://fintel.io)
-        """
-    )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — GOVERNMENT CONTRACTS
-# ══════════════════════════════════════════════════════════════════════════════
-
-with tab_contracts:
-    ct_title, ct_info = st.columns([6, 1])
-    with ct_title:
-        st.subheader("Federal Contract Awards")
-    with ct_info:
-        with st.popover("ℹ️ About this data", use_container_width=True):
-            st.markdown("""
-#### Federal Contract Data
-
-Source: **USAspending.gov** — the official U.S. government open data portal for all federal spending.
-
-**What it shows:**
-- Every contract awarded by federal agencies (DoD, DHS, HHS, DOE, etc.)
-- Grouped by NAICS industry sector
-- Filtered to the lookback window you selected in the sidebar
-
-**Why contracts matter:**
-A company winning a large federal contract gets **guaranteed revenue** — often multi-year.
-This is one of the strongest leading indicators for small/mid-cap growth, especially in:
-- Defense & aerospace
-- Cybersecurity & IT services
-- Healthcare services (Medicare/Medicaid)
-- Infrastructure & construction
-- Nuclear & clean energy
-
-**How to use it:**
-Cross-reference the top recipients with the Watchlist tab.
-If a company is getting contracts AND institutions are buying → strong signal.
-            """)
-    st.caption(f"Data from USAspending.gov — past {lookback} days")
-
-    with st.spinner("Fetching contract data..."):
+    with tab3:
+        st.markdown('<div class="section-header">Federal Contract Awards</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-sub">From USAspending.gov · last {lookback} days</div>', unsafe_allow_html=True)
         contracts_df = load_contracts(lookback)
-        recipients_df = load_contract_recipients(lookback)
+        if not contracts_df.empty:
+            st.plotly_chart(contract_treemap(contracts_df), use_container_width=True)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**By sector**")
+                d = contracts_df.copy()
+                d["total_amount"] = d["total_amount"].apply(lambda x: f"${x:,.0f}")
+                st.dataframe(d, hide_index=True, use_container_width=True)
+            with c2:
+                st.markdown("**Top recipients**")
+                if not recipients.empty:
+                    r = recipients.copy()
+                    r["total_amount"] = r["total_amount"].apply(lambda x: f"${x:,.0f}")
+                    st.dataframe(r, hide_index=True, use_container_width=True)
 
-    if not contracts_df.empty:
-        st.plotly_chart(contract_treemap(contracts_df), use_container_width=True)
+    with tab4:
+        st.markdown('<div class="section-header">Macroeconomic Indicators</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-sub">From FRED (St. Louis Fed) — economic context for the picks</div>', unsafe_allow_html=True)
+        ind = load_indicators()
+        yc = yield_curve_signal()
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            if not ind.empty:
+                st.plotly_chart(indicators_gauge_row(ind), use_container_width=True)
+                st.dataframe(ind, hide_index=True, use_container_width=True)
+        with c2:
+            st.markdown("**Yield Curve**")
+            st.info(yc)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Sector Summary**")
-            display = contracts_df.copy()
-            display["total_amount"] = display["total_amount"].apply(lambda x: f"${x:,.0f}")
-            st.dataframe(display, hide_index=True, use_container_width=True)
-        with col2:
-            st.markdown("**Top Contract Recipients**")
-            if not recipients_df.empty:
-                disp_r = recipients_df.copy()
-                disp_r["total_amount"] = disp_r["total_amount"].apply(lambda x: f"${x:,.0f}")
-                st.dataframe(disp_r, hide_index=True, use_container_width=True)
-    else:
-        st.warning("Contract data unavailable. Try refreshing.")
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — MARKET DATA
-# ══════════════════════════════════════════════════════════════════════════════
-
-with tab_market:
-    st.subheader("Sector ETF Performance")
-    st.caption(f"SPDR sector ETFs — past {lookback} days")
-
-    with st.spinner("Fetching market data..."):
-        perf_df2 = load_sector_performance(lookback)
-        broad_df = fetch_broad_market(lookback)
-
-    col1, col2, col3, col4 = st.columns(4)
-    if not broad_df.empty:
-        for i, (_, row) in enumerate(broad_df.iterrows()):
-            [col1, col2, col3, col4][i % 4].metric(
-                row["index"], f"${row['latest_price']:.2f}", f"{row['return_pct']:+.2f}%"
-            )
-
-    if not perf_df2.empty:
-        st.plotly_chart(sector_momentum_chart(perf_df2), use_container_width=True)
-
-        selected = st.selectbox("View 90-day price history", perf_df2["sector"].tolist())
-        if selected:
-            with st.spinner(f"Loading {selected}..."):
-                hist = fetch_sector_history(selected, days_back=90)
-            if not hist.empty:
-                st.plotly_chart(price_history_chart(hist, selected), use_container_width=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — MACRO INDICATORS
-# ══════════════════════════════════════════════════════════════════════════════
-
-with tab_macro:
-    macro_title, macro_info = st.columns([6, 1])
-    with macro_title:
-        st.subheader("Macroeconomic Indicators")
-    with macro_info:
-        with st.popover("ℹ️ Reading the indicators", use_container_width=True):
-            st.markdown("""
-#### How to Read Macro Indicators
-
-Source: **FRED** (Federal Reserve Bank of St. Louis) — the gold standard for free economic data.
-
-| Indicator | Bullish | Bearish |
-|-----------|---------|---------|
-| GDP Growth | > 2% | < 0% (recession) |
-| CPI Inflation | 2–3% | > 5% (Fed hikes rates) |
-| Unemployment | < 4% | Rising fast |
-| Fed Funds Rate | Falling | Rising (hurts growth) |
-| 10Y Treasury | Stable / falling | Spiking up |
-| Consumer Sentiment | > 80 | Dropping fast |
-
-**Yield Curve (10Y minus 2Y):**
-- **Normal** (10Y > 2Y): healthy economy
-- **Flat** (spread < 0.5%): slowdown risk
-- **Inverted** (2Y > 10Y): historically precedes recession by 12–18 months
-
-**How to combine with the Watchlist:**
-- Rising rates → favor defense, energy, financials
-- Rate cuts expected → tech and growth stocks benefit
-- Recession signal → stay defensive (healthcare, staples)
-            """)
-    st.caption("From FRED (St. Louis Fed). Add FRED_API_KEY to secrets for live data.")
-
-    with st.spinner("Fetching indicators..."):
-        indicators_df = load_indicators()
-        yc_signal = yield_curve_signal()
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if not indicators_df.empty:
-            st.plotly_chart(indicators_gauge_row(indicators_df), use_container_width=True)
-            st.dataframe(indicators_df, hide_index=True, use_container_width=True)
-    with col2:
-        st.markdown("**Yield Curve Signal**")
-        color = "red" if "INVERTED" in yc_signal else ("orange" if "FLAT" in yc_signal else "green")
-        st.markdown(f":{color}[{yc_signal}]")
-        st.divider()
-        st.markdown("""
-        **How to read:**
-        - **GDP > 2%** = healthy expansion
-        - **CPI rising fast** = rate hike risk
-        - **Unemployment < 4%** = tight labor
-        - **Inverted yield curve** = recession risk in 12-18mo
-        - **Sentiment dropping** = slowdown ahead
-        """)
+    st.markdown("""
+    <div class="disclaimer" style="margin-top: 24px;">
+    <strong>⚠️ Important:</strong> FlowSignal is for informational and educational purposes only.
+    This is NOT financial advice. Past signals do not guarantee future returns.
+    Always consult a licensed financial advisor before making investment decisions.
+    </div>
+    """, unsafe_allow_html=True)
