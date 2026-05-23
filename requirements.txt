@@ -1,0 +1,11 @@
+streamlit>=1.35.0
+pandas>=2.0.0
+plotly>=5.20.0
+requests>=2.31.0
+yfinance>=0.2.40
+fredapi>=0.5.2
+schedule>=1.2.2
+python-dotenv>=1.0.0
+SQLAlchemy>=2.0.0
+apscheduler>=3.10.4
+numpy>=1.26.0
