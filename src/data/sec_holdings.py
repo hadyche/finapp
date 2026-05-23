@@ -27,87 +27,187 @@ INSTITUTIONS = {
     "State Street":     "0000093751",
 }
 
-# CUSIP → ticker (top ~150 holdings of index funds + defense stocks)
+# CUSIP → ticker
 CUSIP_TO_TICKER = {
+    # ── Mega / Large Cap ──────────────────────────────────────────────────────
     "037833100": "AAPL",   "594918104": "MSFT",   "023135106": "AMZN",
     "67066G104": "NVDA",   "02079K305": "GOOGL",  "30303M102": "META",
-    "92826C839": "TSLA",   "46090E103": "IVZ",    "922908363": "VZ",
-    "931142103": "WMT",    "742718109": "PG",     "478160104": "JNJ",
-    "172967424": "BRK.B",  "46625H100": "JPM",    "857477103": "TGT",
-    "808513105": "SCHW",   "191216100": "KO",     "723254990": "MRK",
-    "585055106": "MCD",    "718172109": "PM",     "14272462":  "V",
-    "931142103": "WMT",    "037833100": "AAPL",   "88160R101": "TSLA",
-    "097023105": "BA",     "526057104": "LMT",    "020286104": "RTX",
-    "667491104": "NOC",    "369550108": "GD",     "502413107": "LHX",
-    "525327102": "LDOS",   "099614101": "BAH",    "78376A102": "SAIC",
-    "44107P104": "HII",    "872589104": "TDG",    "101137107": "BWA",
-    "254687106": "DIS",    "29364G103": "ENTG",   "531229854": "LIN",
-    "67103H107": "ORCL",   "11135F101": "AVGO",   "46625H100": "JPM",
-    "38141G104": "GS",     "073902108": "BAC",    "172967424": "BRK.B",
-    "459200101": "IBM",    "345370860": "INTC",   "912093108": "UAL",
-    "883556102": "TGT",    "166764100": "CHTR",   "458140100": "ISRG",
-    "032654105": "ABBV",   "00287Y109": "ABBV",   "589331107": "MET",
-    "260003108": "DVN",    "803649107": "SLB",    "044209104": "APA",
-    "278768106": "ELV",    "423074703": "HCA",    "191791104": "CVS",
-    "577081102": "MOH",    "716791108": "PFE",    "91324P102": "UNH",
-    "742718109": "PG",     "428236103": "HON",    "110122108": "CAT",
-    "66987V109": "PCAR",   "012653101": "ALB",    "747525103": "QCOM",
-    "45866F104": "INTU",   "09857L108": "BKNG",   "742460009": "NOW",
-    "023586100": "AMD",    "404121106": "HAL",    "872589104": "TDG",
-    "913017109": "URI",    "92220P105": "VLO",    "867840105": "SWN",
-    "693475105": "PNC",    "949746101": "WFC",    "02562E104": "AXP",
-    "345370860": "INTC",   "594918104": "MSFT",   "02079K107": "GOOG",
-    "717081103": "PHM",    "126650100": "CVX",    "08243Q100": "BLK",
-    "22160K105": "COST",   "984121103": "XOM",    "713448108": "PLTR",
+    "92826C839": "TSLA",   "922908363": "VZ",     "931142103": "WMT",
+    "742718109": "PG",     "478160104": "JNJ",    "172967424": "BRK.B",
+    "46625H100": "JPM",    "808513105": "SCHW",   "191216100": "KO",
+    "723254990": "MRK",    "585055106": "MCD",    "097023105": "BA",
+    "526057104": "LMT",    "020286104": "RTX",    "667491104": "NOC",
+    "369550108": "GD",     "502413107": "LHX",    "525327102": "LDOS",
+    "099614101": "BAH",    "78376A102": "SAIC",   "44107P104": "HII",
+    "872589104": "TDG",    "67103H107": "ORCL",   "11135F101": "AVGO",
+    "38141G104": "GS",     "073902108": "BAC",    "459200101": "IBM",
+    "345370860": "INTC",   "278768106": "ELV",    "423074703": "HCA",
+    "191791104": "CVS",    "577081102": "MOH",    "91324P102": "UNH",
+    "428236103": "HON",    "110122108": "CAT",    "747525103": "QCOM",
+    "45866F104": "INTU",   "742460009": "NOW",    "023586100": "AMD",
+    "949746101": "WFC",    "126650100": "CVX",    "984121103": "XOM",
+    "713448108": "PLTR",   "08243Q100": "BLK",    "22160K105": "COST",
+    "02079K107": "GOOG",
+    # ── Mid Cap ($3B–$15B) ────────────────────────────────────────────────────
+    "12738V108": "CACI",   # CACI International — gov IT/cyber
+    "70202L102": "PSN",    # Parsons Corp — defense/intelligence IT
+    "501573106": "KTOS",   # Kratos Defense — drones, satellites
+    "580583101": "MRCY",   # Mercury Systems — defense electronics
+    "231462108": "CW",     # Curtiss-Wright — defense components
+    "055605105": "BWXT",   # BWX Technologies — nuclear defense
+    "552931104": "MMS",    # Maximus Inc — gov healthcare IT
+    "44925C103": "ICFI",   # ICF International — gov consulting
+    "552337107": "MYRG",   # MYR Group — electrical construction
+    "74260D107": "PRIM",   # Primoris Services — infrastructure
+    "362604106": "GVA",    # Granite Construction
+    "74975P105": "TTEK",   # Tetra Tech — engineering/environment
+    "009158106": "ACM",    # AECOM — engineering/construction
+    "05946K101": "AVAV",   # AeroVironment — military drones
+    "717605105": "MOOG",   # Moog Inc — aerospace/defense
+    "918781105": "V2X",    # Vectrus/V2X — defense logistics
+    "92763W108": "VSE",    # VSE Corporation — defense maintenance
+    "05464C101": "AXON",   # Axon Enterprise — law enforcement tech
+    "03073E105": "AMBP",   # Ardagh Metal Packaging
+    "68213N109": "OPCH",   # Option Care Health — home infusion
+    "00508Y102": "ADUS",   # Addus HomeCare — Medicaid home care
+    # ── Small Cap (< $3B) ─────────────────────────────────────────────────────
+    "879585109": "TLS",    # Telos Corp — federal cybersecurity
+    "09075V102": "BBAI",   # BigBear.ai — AI analytics for gov
+    "500631106": "KFRC",   # Kforce — gov IT staffing
+    "23330A106": "DY",     # Dycom — telecom/infrastructure
+    "267475101": "DCO",    # Ducommun — defense components
+    "896429109": "TGI",    # Triumph Group — aerospace structures
+    "483000101": "KAMN",   # Kaman Corp — aerospace/defense
+    "62460Q105": "MANT",   # ManTech International
+    "518081108": "LEU",    # Centrus Energy — uranium enrichment
+    "67059N108": "SMR",    # NuScale Power — small modular reactors
+    "256677105": "DLB",    # Dolby — audio/comms tech
+    "05518T100": "BBCP",   # Concrete Pumping Holdings
+    "585683106": "MDVX",   # Medovation
+    "30212P303": "EXLS",   # ExlService Holdings — analytics
+    "30161Q104": "EVTC",   # Evertec
+    "38869P108": "GEOS",   # Geospace Technologies
+    "05464C101": "AXON",   # Axon Enterprise
+    "69318G106": "PCVX",   # Vaxcyte
+    "74166L108": "PRCT",   # Procept BioRobotics
+}
+
+# Market cap tiers — used to weight signals and filter Hidden Gems
+# small = < $3B,  mid = $3B–$15B,  large = > $15B
+TICKER_SIZE = {
+    # Large cap
+    "AAPL": "large", "MSFT": "large", "NVDA": "large", "AMZN": "large",
+    "META": "large", "GOOGL": "large", "GOOG": "large", "TSLA": "large",
+    "JPM": "large",  "BAC": "large",  "WFC": "large",  "GS": "large",
+    "UNH": "large",  "JNJ": "large",  "PFE": "large",  "ABBV": "large",
+    "LMT": "large",  "RTX": "large",  "NOC": "large",  "BA": "large",
+    "GD": "large",   "LHX": "large",  "LDOS": "large", "HON": "large",
+    "CAT": "large",  "IBM": "large",  "ORCL": "large", "AVGO": "large",
+    "INTU": "large", "NOW": "large",  "AMD": "large",  "QCOM": "large",
+    "BAH": "large",  "HCA": "large",  "CVS": "large",  "ELV": "large",
+    "PLTR": "large", "AXON": "large", "TDG": "large",  "COST": "large",
+    "WMT": "large",  "KO": "large",   "MCD": "large",  "XOM": "large",
+    "CVX": "large",  "BLK": "large",  "AXP": "large",  "SCHW": "large",
+    # Mid cap ($3B–$15B)
+    "CACI": "mid",   "PSN": "mid",    "KTOS": "mid",   "BWXT": "mid",
+    "MMS":  "mid",   "ICFI": "mid",   "TTEK": "mid",   "ACM":  "mid",
+    "AVAV": "mid",   "MOOG": "mid",   "GVA":  "mid",   "PRIM": "mid",
+    "DY":   "mid",   "OPCH": "mid",   "CW":   "mid",   "HII":  "mid",
+    "SAIC": "mid",   "V2X":  "mid",   "MYRG": "mid",   "VSE":  "mid",
+    # Small cap (< $3B)
+    "MRCY": "small", "TLS":  "small", "BBAI": "small", "KFRC": "small",
+    "DCO":  "small", "TGI":  "small", "KAMN": "small", "MANT": "small",
+    "LEU":  "small", "SMR":  "small", "ADUS": "small", "BBCP": "small",
+    "EXLS": "small", "GEOS": "small",
 }
 
 # Realistic demo holdings for when EDGAR is unreachable
 DEMO_HOLDINGS = {
     "BlackRock": [
-        ("AAPL", "Apple Inc",           245_800_000, 238_200_000, 1_420_000, 1_380_000),
-        ("MSFT", "Microsoft Corp",      198_400_000, 190_100_000, 740_000,   712_000),
-        ("NVDA", "Nvidia Corp",         187_200_000, 142_600_000, 1_920_000, 1_460_000),
-        ("AMZN", "Amazon.com Inc",      162_300_000, 158_700_000, 880_000,   860_000),
-        ("META", "Meta Platforms",       98_400_000,  82_100_000, 240_000,   202_000),
-        ("GOOGL","Alphabet Inc",         94_200_000,  96_800_000, 620_000,   640_000),
-        ("LMT",  "Lockheed Martin",      18_400_000,  14_200_000,  42_000,    32_000),
-        ("RTX",  "RTX Corp",             16_800_000,  14_600_000, 180_000,   160_000),
-        ("NOC",  "Northrop Grumman",     12_200_000,   9_800_000,  29_000,    23_000),
-        ("BA",   "Boeing Co",            11_400_000,  13_200_000, 102_000,   118_000),
-        ("GD",   "General Dynamics",      9_800_000,   8_100_000,  41_000,    34_000),
-        ("UNH",  "UnitedHealth Group",   44_200_000,  42_800_000, 100_000,    97_000),
-        ("JPM",  "JPMorgan Chase",       62_800_000,  58_400_000, 358_000,   334_000),
-        ("AVGO", "Broadcom Inc",         48_200_000,  36_400_000, 408_000,   312_000),
-        ("PLTR", "Palantir Tech",         8_200_000,   4_100_000, 420_000,   210_000),
-        ("BAH",  "Booz Allen Hamilton",   4_800_000,   3_200_000,  42_000,    28_000),
-        ("LDOS", "Leidos Holdings",       3_600_000,   3_800_000,  34_000,    36_000),
-        ("LHX",  "L3Harris Tech",         6_200_000,   5_100_000,  42_000,    34_000),
+        # Large cap
+        ("AAPL", "Apple Inc",            245_800_000, 238_200_000, 1_420_000, 1_380_000),
+        ("MSFT", "Microsoft Corp",       198_400_000, 190_100_000,   740_000,   712_000),
+        ("NVDA", "Nvidia Corp",          187_200_000, 142_600_000, 1_920_000, 1_460_000),
+        ("AMZN", "Amazon.com Inc",       162_300_000, 158_700_000,   880_000,   860_000),
+        ("META", "Meta Platforms",        98_400_000,  82_100_000,   240_000,   202_000),
+        ("LMT",  "Lockheed Martin",       18_400_000,  14_200_000,    42_000,    32_000),
+        ("RTX",  "RTX Corp",              16_800_000,  14_600_000,   180_000,   160_000),
+        ("NOC",  "Northrop Grumman",      12_200_000,   9_800_000,    29_000,    23_000),
+        ("GD",   "General Dynamics",       9_800_000,   8_100_000,    41_000,    34_000),
+        ("BAH",  "Booz Allen Hamilton",    4_800_000,   3_200_000,    42_000,    28_000),
+        ("LHX",  "L3Harris Tech",          6_200_000,   5_100_000,    42_000,    34_000),
+        ("PLTR", "Palantir Tech",          8_200_000,   4_100_000,   420_000,   210_000),
+        # Mid cap — institutions building positions
+        ("CACI", "CACI International",     1_840_000,   1_200_000,     6_800,     4_400),
+        ("PSN",  "Parsons Corp",           1_620_000,     980_000,    22_400,    13_600),
+        ("KTOS", "Kratos Defense",           980_000,     420_000,    62_000,    26_600),
+        ("BWXT", "BWX Technologies",       1_240_000,   1_080_000,    12_400,    10_800),
+        ("MMS",  "Maximus Inc",              780_000,     560_000,     9_800,     7_100),
+        ("AVAV", "AeroVironment",            920_000,     480_000,     5_200,     2_720),
+        ("MOOG", "Moog Inc",                 640_000,     520_000,     5_600,     4_560),
+        ("TTEK", "Tetra Tech",             1_080_000,     840_000,     8_200,     6_400),
+        ("ICFI", "ICF International",        420_000,     280_000,     3_600,     2_400),
+        # Small cap — NEW positions opened this quarter
+        ("MRCY", "Mercury Systems",          380_000,           0,    24_000,         0),
+        ("TLS",  "Telos Corp",               142_000,           0,    62_000,         0),
+        ("BBAI", "BigBear.ai",               210_000,      80_000,   210_000,    80_000),
+        ("V2X",  "Vectrus/V2X",             320_000,     180_000,    14_000,     7_800),
+        ("VSE",  "VSE Corporation",          280_000,     160_000,     2_800,     1_600),
+        ("LEU",  "Centrus Energy",           180_000,           0,    12_000,         0),
+        ("ADUS", "Addus HomeCare",           240_000,     180_000,     3_200,     2_400),
     ],
     "Vanguard": [
-        ("AAPL", "Apple Inc",           312_400_000, 308_100_000, 1_820_000, 1_800_000),
-        ("MSFT", "Microsoft Corp",      248_200_000, 244_800_000, 920_000,   908_000),
-        ("NVDA", "Nvidia Corp",         224_600_000, 182_400_000, 2_320_000, 1_880_000),
-        ("AMZN", "Amazon.com Inc",      198_400_000, 194_200_000, 1_080_000, 1_060_000),
-        ("META", "Meta Platforms",      118_200_000,  98_400_000,  288_000,   242_000),
-        ("LMT",  "Lockheed Martin",      22_400_000,  18_600_000,   52_000,    43_000),
-        ("RTX",  "RTX Corp",             20_100_000,  17_200_000,  216_000,   186_000),
-        ("NOC",  "Northrop Grumman",     14_800_000,  11_200_000,   35_000,    27_000),
-        ("GD",   "General Dynamics",     11_200_000,   9_400_000,   47_000,    39_000),
-        ("SAIC", "SAIC Inc",              2_400_000,   1_800_000,   22_000,    16_000),
-        ("HCA",  "HCA Healthcare",       18_400_000,  16_800_000,   74_000,    68_000),
-        ("AVGO", "Broadcom Inc",         58_400_000,  44_200_000,  492_000,   378_000),
+        # Large cap
+        ("AAPL", "Apple Inc",            312_400_000, 308_100_000, 1_820_000, 1_800_000),
+        ("MSFT", "Microsoft Corp",       248_200_000, 244_800_000,   920_000,   908_000),
+        ("NVDA", "Nvidia Corp",          224_600_000, 182_400_000, 2_320_000, 1_880_000),
+        ("AMZN", "Amazon.com Inc",       198_400_000, 194_200_000, 1_080_000, 1_060_000),
+        ("META", "Meta Platforms",       118_200_000,  98_400_000,   288_000,   242_000),
+        ("LMT",  "Lockheed Martin",       22_400_000,  18_600_000,    52_000,    43_000),
+        ("RTX",  "RTX Corp",              20_100_000,  17_200_000,   216_000,   186_000),
+        ("NOC",  "Northrop Grumman",      14_800_000,  11_200_000,    35_000,    27_000),
+        ("GD",   "General Dynamics",      11_200_000,   9_400_000,    47_000,    39_000),
+        # Mid cap
+        ("CACI", "CACI International",     2_100_000,   1_400_000,     7_700,     5_200),
+        ("PSN",  "Parsons Corp",           1_880_000,   1_100_000,    26_000,    15_200),
+        ("KTOS", "Kratos Defense",         1_140_000,     560_000,    72_000,    35_400),
+        ("MMS",  "Maximus Inc",              920_000,     680_000,    11_600,     8_600),
+        ("AVAV", "AeroVironment",          1_080_000,     620_000,     6_100,     3_520),
+        ("GVA",  "Granite Construction",     640_000,     480_000,     8_800,     6_600),
+        ("PRIM", "Primoris Services",        520_000,     380_000,    14_400,    10_400),
+        ("TTEK", "Tetra Tech",             1_240_000,     960_000,     9_400,     7_200),
+        ("OPCH", "Option Care Health",       680_000,     420_000,    28_000,    17_400),
+        # Small cap — NEW positions
+        ("MRCY", "Mercury Systems",          460_000,           0,    29_200,         0),
+        ("BBAI", "BigBear.ai",               260_000,      96_000,   260_000,    96_000),
+        ("SMR",  "NuScale Power",            320_000,           0,    62_000,         0),
+        ("DCO",  "Ducommun Inc",             240_000,     140_000,     5_200,     3_000),
+        ("KAMN", "Kaman Corp",               180_000,           0,     8_400,         0),
+        ("MYRG", "MYR Group",                360_000,     260_000,     7_200,     5_200),
     ],
     "State Street": [
-        ("AAPL", "Apple Inc",           198_200_000, 194_800_000, 1_160_000, 1_140_000),
-        ("MSFT", "Microsoft Corp",      162_400_000, 158_200_000,  604_000,   590_000),
-        ("NVDA", "Nvidia Corp",         148_600_000, 118_200_000, 1_540_000, 1_220_000),
-        ("LMT",  "Lockheed Martin",      14_200_000,  11_800_000,   33_000,    27_000),
-        ("RTX",  "RTX Corp",             12_800_000,  10_400_000,  138_000,   112_000),
-        ("BA",   "Boeing Co",             8_200_000,  10_400_000,   74_000,    94_000),
-        ("NOC",  "Northrop Grumman",      9_200_000,   7_400_000,   22_000,    18_000),
-        ("BAH",  "Booz Allen Hamilton",   2_800_000,   1_900_000,   24_000,    17_000),
-        ("PLTR", "Palantir Tech",          3_400_000,   1_600_000,  174_000,    82_000),
-        ("JPM",  "JPMorgan Chase",        48_200_000,  44_800_000,  276_000,   257_000),
+        # Large cap
+        ("AAPL", "Apple Inc",            198_200_000, 194_800_000, 1_160_000, 1_140_000),
+        ("MSFT", "Microsoft Corp",       162_400_000, 158_200_000,   604_000,   590_000),
+        ("NVDA", "Nvidia Corp",          148_600_000, 118_200_000, 1_540_000, 1_220_000),
+        ("LMT",  "Lockheed Martin",       14_200_000,  11_800_000,    33_000,    27_000),
+        ("RTX",  "RTX Corp",              12_800_000,  10_400_000,   138_000,   112_000),
+        ("NOC",  "Northrop Grumman",       9_200_000,   7_400_000,    22_000,    18_000),
+        ("BAH",  "Booz Allen Hamilton",    2_800_000,   1_900_000,    24_000,    17_000),
+        ("PLTR", "Palantir Tech",           3_400_000,   1_600_000,   174_000,    82_000),
+        # Mid cap
+        ("CACI", "CACI International",     1_560_000,     880_000,     5_700,     3_200),
+        ("KTOS", "Kratos Defense",           860_000,     340_000,    54_400,    21_500),
+        ("BWXT", "BWX Technologies",       1_080_000,     860_000,    10_800,     8_600),
+        ("MOOG", "Moog Inc",                 560_000,     420_000,     4_900,     3_680),
+        ("V2X",  "Vectrus/V2X",             380_000,     200_000,    16_600,     8_700),
+        ("ACM",  "AECOM",                  1_420_000,   1_180_000,    18_400,    15_200),
+        # Small cap — NEW positions
+        ("TLS",  "Telos Corp",               168_000,           0,    74_000,         0),
+        ("LEU",  "Centrus Energy",           210_000,      60_000,    14_000,     4_000),
+        ("SMR",  "NuScale Power",            280_000,           0,    54_200,         0),
+        ("VSE",  "VSE Corporation",          240_000,     120_000,     2_400,     1_200),
+        ("ADUS", "Addus HomeCare",           200_000,     140_000,     2_680,     1_870),
     ],
 }
 

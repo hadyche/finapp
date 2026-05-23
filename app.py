@@ -162,88 +162,114 @@ tab_watch, tab_inst, tab_contracts, tab_market, tab_macro = st.tabs([
 
 with tab_watch:
     st.subheader("Ranked Stock Watchlist")
-    st.caption(
-        "Stocks scored by: institutional buying pressure (45pts) + "
-        "government contract exposure (30pts) + sector ETF momentum (15pts) + "
-        "position conviction/size (10pts) = 100 max."
-    )
 
     with st.spinner("Analyzing institutional holdings & contracts..."):
         holdings_changes = load_all_holdings_changes()
         perf_df = load_sector_performance(lookback)
         recipients_df = load_contract_recipients(lookback)
 
-    watchlist = build_watchlist(holdings_changes, perf_df, recipients_df)
-    wl_df = watchlist_to_dataframe(watchlist)
-
-    if wl_df.empty:
-        st.warning("Could not build watchlist — check data sources.")
+    if holdings_changes.empty:
+        st.warning("Could not load holdings data.")
     else:
-        # Top 3 highlight cards
-        top3 = [w for w in watchlist if w.buying_institutions][:3]
-        cols = st.columns(3)
-        for i, entry in enumerate(top3):
-            with cols[i]:
-                delta_color = "normal" if entry.score >= 50 else "off"
-                st.metric(
-                    label=f"#{i+1} {entry.ticker}",
-                    value=entry.company[:22],
-                    delta=f"Score: {entry.score}/100",
-                )
-                st.caption(" | ".join(entry.buying_institutions) or "Held")
-
-        st.divider()
-
-        # Filter controls
-        col_f1, col_f2 = st.columns([1, 2])
-        with col_f1:
-            min_score = st.slider("Minimum score", 0, 100, 30, step=5)
-        with col_f2:
+        # ── Mode toggle ────────────────────────────────────────────────────────
+        col_mode1, col_mode2 = st.columns([1, 2])
+        with col_mode1:
+            hidden_gems = st.toggle(
+                "🔹 Hidden Gems mode",
+                value=True,
+                help="ON = small & mid-cap only (under-the-radar picks). OFF = all sizes including large cap.",
+            )
+        with col_mode2:
             show_actions = st.multiselect(
-                "Show only stocks where institutions are...",
+                "Institution action filter",
                 ["NEW", "INCREASED", "HELD", "DECREASED"],
                 default=["NEW", "INCREASED"],
             )
 
-        # Filter the holdings changes
+        min_score = st.slider("Minimum score to show", 0, 100, 20, step=5)
+
         if show_actions:
             filtered_changes = holdings_changes[holdings_changes["action"].isin(show_actions)]
         else:
             filtered_changes = holdings_changes
 
-        filtered_watchlist = build_watchlist(filtered_changes, perf_df, recipients_df)
-        filtered_df = watchlist_to_dataframe(
-            [w for w in filtered_watchlist if w.score >= min_score]
+        watchlist = build_watchlist(
+            filtered_changes, perf_df, recipients_df, hidden_gems_only=hidden_gems
         )
+        scored = [w for w in watchlist if w.score >= min_score]
+        wl_df = watchlist_to_dataframe(scored)
 
-        if filtered_df.empty:
-            st.info("No stocks match these filters. Try lowering the minimum score.")
+        if hidden_gems:
+            st.caption(
+                "🔹 Hidden Gems mode ON — showing small & mid-cap stocks only. "
+                "Small cap NEW positions score 2x, mid cap 1.4x. "
+                "These are the lesser-known names most people haven't heard of."
+            )
         else:
-            # Score bar chart
-            chart_df = filtered_df.head(20).copy()
+            st.caption("Showing all market caps. Toggle Hidden Gems to focus on under-the-radar picks.")
+
+        st.divider()
+
+        # ── Top 3 highlight cards ──────────────────────────────────────────────
+        top3 = [w for w in scored if w.buying_institutions][:3]
+        if top3:
+            cols = st.columns(3)
+            for i, entry in enumerate(top3):
+                with cols[i]:
+                    from src.analysis.watchlist import SIZE_LABELS
+                    size_label = SIZE_LABELS.get(entry.size, "")
+                    st.metric(
+                        label=f"#{i+1} {entry.ticker}  {size_label}",
+                        value=entry.company[:24],
+                        delta=f"Score {entry.score}/100 — {entry.recommendation}",
+                    )
+                    st.caption(f"{entry.sector} | " + " + ".join(entry.buying_institutions))
+
+        st.divider()
+
+        if wl_df.empty:
+            st.info("No stocks match these filters. Try lowering the score threshold or adjusting the action filter.")
+        else:
+            # Stacked score chart
+            chart_df = wl_df.head(20).copy()
             fig = go.Figure()
-            fig.add_trace(go.Bar(name="Institutional", x=chart_df["Ticker"],
-                                  y=chart_df["Inst. Score (0-45)"], marker_color="#00C853"))
-            fig.add_trace(go.Bar(name="Gov Contracts", x=chart_df["Ticker"],
-                                  y=chart_df["Contract Score (0-30)"], marker_color="#2196F3"))
-            fig.add_trace(go.Bar(name="Momentum",     x=chart_df["Ticker"],
-                                  y=chart_df["Momentum (0-15)"], marker_color="#FF9800"))
-            fig.add_trace(go.Bar(name="Conviction",   x=chart_df["Ticker"],
-                                  y=chart_df["Conviction (0-10)"], marker_color="#9C27B0"))
+            fig.add_trace(go.Bar(name="Institutional",  x=chart_df["Ticker"],
+                                  y=chart_df["Inst. Score"],    marker_color="#00C853"))
+            fig.add_trace(go.Bar(name="Gov Contracts",  x=chart_df["Ticker"],
+                                  y=chart_df["Contract"],       marker_color="#2196F3"))
+            fig.add_trace(go.Bar(name="Momentum",       x=chart_df["Ticker"],
+                                  y=chart_df["Momentum"],       marker_color="#FF9800"))
+            fig.add_trace(go.Bar(name="Conviction",     x=chart_df["Ticker"],
+                                  y=chart_df["Conviction"],     marker_color="#9C27B0"))
             fig.update_layout(
                 barmode="stack",
-                title="Top Stocks — Score Breakdown",
+                title="Top Stocks — Score Breakdown (small caps boosted)",
                 template="plotly_dark",
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
-                height=420,
+                height=430,
                 xaxis_tickangle=-45,
             )
             st.plotly_chart(fig, use_container_width=True)
 
+            # Size distribution pie
+            if "Size" in wl_df.columns:
+                size_counts = wl_df["Size"].value_counts().reset_index()
+                size_counts.columns = ["Size", "count"]
+                fig2 = px.pie(
+                    size_counts, names="Size", values="count",
+                    title="Watchlist Breakdown by Market Cap",
+                    template="plotly_dark",
+                    color_discrete_sequence=["#00C853", "#FF9800", "#9E9E9E"],
+                )
+                fig2.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", height=280
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+
             # Full table
             st.dataframe(
-                filtered_df.style.background_gradient(
+                wl_df.style.background_gradient(
                     subset=["Score"], cmap="RdYlGn", vmin=0, vmax=100
                 ),
                 use_container_width=True,
@@ -253,11 +279,16 @@ with tab_watch:
         st.divider()
         st.markdown(
             """
-            **How to read this table:**
-            - **STRONG SIGNAL (60+)** — Multiple institutions buying AND government contracts flowing in. Highest confluence.
-            - **POSITIVE SIGNAL (40-59)** — At least one major institution increasing position with supporting data.
-            - **MILD SIGNAL (25-39)** — Early watch. One signal present, others neutral.
-            - Scores update when you click **Refresh All Data** in the sidebar.
+            **Scoring guide:**
+            | Score | Signal | Meaning |
+            |-------|--------|---------|
+            | 60+ | STRONG | Multiple institutions buying + gov contracts flowing in |
+            | 40–59 | POSITIVE | At least 1 institution actively buying |
+            | 25–39 | WATCH | Early signal, one factor present |
+            | < 25 | WEAK | Not enough confluence yet |
+
+            **Why small caps score higher:** A NEW position in a $500M company means far more than
+            adding 0.01% to an Apple position. The size multiplier reflects that.
             """
         )
 
