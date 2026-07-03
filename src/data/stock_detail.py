@@ -63,6 +63,58 @@ def get_quote(ticker: str) -> dict:
         return {}
 
 
+def get_market_caps(tickers: list[str]) -> dict[str, float | None]:
+    """
+    Market caps for a batch of tickers. None for any symbol that fails —
+    callers must treat None as 'unknown', never guess.
+    """
+    caps: dict[str, float | None] = {}
+    if not tickers:
+        return caps
+    try:
+        batch = yf.Tickers(" ".join(tickers))
+    except Exception as e:
+        print(f"yfinance batch error: {e}")
+        return {t: None for t in tickers}
+
+    for t in tickers:
+        cap = None
+        try:
+            fi = batch.tickers[t.upper()].fast_info
+            raw = fi.get("marketCap") if hasattr(fi, "get") else getattr(fi, "market_cap", None)
+            if raw and float(raw) > 0:
+                cap = float(raw)
+        except Exception:
+            cap = None
+        caps[t] = cap
+    return caps
+
+
+INDEX_INSTITUTIONS = ("BLACKROCK", "VANGUARD", "STATE STREET")
+
+
+def get_index_fund_holders(ticker: str) -> list[str]:
+    """
+    Which of the big index institutions appear in this stock's top
+    institutional holders. Confirmation badge only — passive funds hold
+    nearly everything, so this is not a discovery signal.
+    """
+    try:
+        t = yf.Ticker(ticker)
+        df = t.institutional_holders
+        if df is None or df.empty or "Holder" not in df.columns:
+            return []
+        holders = df["Holder"].astype(str).str.upper().tolist()
+        found = []
+        for name in INDEX_INSTITUTIONS:
+            if any(name in h for h in holders):
+                found.append(name.title().replace("Blackrock", "BlackRock"))
+        return found
+    except Exception as e:
+        print(f"Institutional holders error {ticker}: {e}")
+        return []
+
+
 def get_news(ticker: str, limit: int = 5) -> list[dict]:
     try:
         t = yf.Ticker(ticker)
