@@ -88,14 +88,16 @@ def fetch_recent_awards(
     limit: int = 500,
     min_amount: float = 5_000_000,
     new_awards_only: bool = True,
+    end_days_back: int = 0,
 ) -> pd.DataFrame:
     """
     Contract awards newly signed in the window, paginated up to `limit`
     rows, prefiltered server-side to >= min_amount. Empty DataFrame on
-    failure.
+    failure. end_days_back shifts the window into the past (e.g.
+    days_back=120, end_days_back=30 → awards signed 30-120 days ago).
     """
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=days_back)
+    end_date = datetime.today() - timedelta(days=end_days_back)
+    start_date = datetime.today() - timedelta(days=days_back)
     page_size = 100
 
     results: list[dict] = []

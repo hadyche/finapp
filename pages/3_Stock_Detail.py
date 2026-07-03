@@ -6,9 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import plotly.graph_objects as go
 from src.ui.theme import inject_css, page_header, disclaimer
 from src.data.favorites import is_favorite, toggle_favorite
-from src.data.stock_detail import get_price_history, get_quote, get_news, get_index_fund_holders
+from src.data.stock_detail import get_price_history, get_quote, get_news
 from src.data.gov_contracts import fed_dollar_summary
-from src.data.ticker_map import load_sec_company_map, build_name_index
+from src.data.ticker_map import load_sec_company_map, build_name_index, ticker_to_cik
+from src.data.insider_trades import insider_buys_for_cik
 
 inject_css()
 
@@ -40,7 +41,8 @@ with head_l:
     """, unsafe_allow_html=True)
 with head_r:
     fav = is_favorite(ticker)
-    if st.button("⭐ Saved" if fav else "☆ Save", use_container_width=True, key="detail_fav"):
+    if st.button("⭐ Saved" if fav else "☆ Save", use_container_width=True, key="detail_fav",
+                 help="Saved for this browser session only — resets on refresh"):
         toggle_favorite(ticker)
         st.rerun()
 
@@ -173,20 +175,68 @@ else:
 
 st.divider()
 
-# ── Index fund confirmation badge ─────────────────────────────────────────────
-st.markdown('<div class="feed-section">🏦 Institutional Ownership</div>', unsafe_allow_html=True)
+# ── Liquidity & Trading ───────────────────────────────────────────────────────
+st.markdown('<div class="feed-section">💧 Liquidity & Trading</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">Can you actually get in and out of this stock?</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=86400)
-def _holders(t): return get_index_fund_holders(t)
+avg_vol = quote.get("avg_volume")
+price = quote.get("price")
+adv_usd = (avg_vol * price) if (avg_vol and price) else None
 
-holders = _holders(ticker)
-if holders:
-    chips = "".join(f'<span class="source-chip">✓ {h}</span>' for h in holders)
-    st.markdown(f"""<div style="margin:4px 0 8px 0;">{chips}</div>
-    <div style="color:#6B6B6B; font-size:0.78rem;">Held by major index institutions —
-    a baseline liquidity check, not a buy signal.</div>""", unsafe_allow_html=True)
+l1, l2, l3 = st.columns(3)
+l1.markdown(f"""<div class="stat-box">
+    <div class="stat-label">Avg daily volume</div>
+    <div class="stat-value">{f"{avg_vol/1e6:.2f}M" if avg_vol else "—"}</div>
+</div>""", unsafe_allow_html=True)
+l2.markdown(f"""<div class="stat-box">
+    <div class="stat-label">Avg daily $ traded</div>
+    <div class="stat-value">{f"${adv_usd/1e6:.1f}M" if adv_usd else "—"}</div>
+</div>""", unsafe_allow_html=True)
+if adv_usd is not None and adv_usd < 1_000_000:
+    l3.markdown("""<div class="stat-box">
+        <div class="stat-label">Tradability</div>
+        <div class="stat-value stat-delta-down" style="font-size:1.05rem;">⚠ Thin — orders can move the price</div>
+    </div>""", unsafe_allow_html=True)
+elif adv_usd is not None:
+    l3.markdown("""<div class="stat-box">
+        <div class="stat-label">Tradability</div>
+        <div class="stat-value stat-delta-up" style="font-size:1.05rem;">OK for retail size</div>
+    </div>""", unsafe_allow_html=True)
+
+st.divider()
+
+# ── Insider activity (SEC Form 4) ─────────────────────────────────────────────
+st.markdown('<div class="feed-section">👤 Insider Buying</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">Officers &amp; directors buying with their own money — SEC Form 4, last 90 days</div>', unsafe_allow_html=True)
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _insider(t):
+    cik = ticker_to_cik(t, load_sec_company_map())
+    if cik is None:
+        return None
+    return insider_buys_for_cik(cik, days_back=90)
+
+with st.spinner("Checking SEC Form 4 filings…"):
+    ins = _insider(ticker)
+
+if ins:
+    i1, i2, i3 = st.columns(3)
+    i1.markdown(f"""<div class="stat-box">
+        <div class="stat-label">Open-market buys</div>
+        <div class="stat-value">{ins['n_buys']}</div>
+    </div>""", unsafe_allow_html=True)
+    i2.markdown(f"""<div class="stat-box">
+        <div class="stat-label">Distinct insiders</div>
+        <div class="stat-value">{ins['n_insiders']}</div>
+    </div>""", unsafe_allow_html=True)
+    i3.markdown(f"""<div class="stat-box">
+        <div class="stat-label">Total invested</div>
+        <div class="stat-value">${ins['total_usd']/1e3:,.0f}K</div>
+    </div>""", unsafe_allow_html=True)
+    if ins.get("last_date"):
+        st.caption(f"Most recent buy: {ins['last_date']}. Multiple insiders buying together is the strongest version of this signal.")
 else:
-    st.caption("No major index institutions in the top holders (or data unavailable). Common for very small companies — expect thinner liquidity.")
+    st.caption("No open-market insider purchases found in the last 90 days (or EDGAR is unavailable). Insider *sales* are normal and not tracked — buys are the signal.")
 
 st.divider()
 

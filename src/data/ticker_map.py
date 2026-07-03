@@ -154,3 +154,13 @@ def cik_to_ticker(cik: int, sec_map: pd.DataFrame) -> str | None:
     if hits.empty:
         return None
     return str(hits.iloc[0]["ticker"])
+
+
+def ticker_to_cik(ticker: str, sec_map: pd.DataFrame) -> int | None:
+    """Resolves a ticker to its SEC CIK number."""
+    if sec_map is None or sec_map.empty or not ticker:
+        return None
+    hits = sec_map[sec_map["ticker"] == str(ticker).upper()]
+    if hits.empty:
+        return None
+    return int(hits.iloc[0]["cik"])
