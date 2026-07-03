@@ -21,6 +21,24 @@ DEMO_SECTOR_SUMMARY = [
     {"sector": "Mining & Energy",        "total_amount": 5_400_000_000,  "contract_count": 134},
 ]
 
+DEMO_RECENT_AWARDS = [
+    {"award_id": "DEMO-001", "recipient": "Kratos Defense & Security Solutions", "amount": 87_000_000, "date": "2025-04-15", "award_type": "Delivery Order", "agency": "U.S. Army", "naics_code": "336411", "naics_desc": "Aircraft Manufacturing", "sector": "Manufacturing"},
+    {"award_id": "DEMO-002", "recipient": "Mercury Systems Inc", "amount": 64_500_000, "date": "2025-04-10", "award_type": "Definitized Contract Action", "agency": "U.S. Navy", "naics_code": "334511", "naics_desc": "Defense Electronics", "sector": "Manufacturing"},
+    {"award_id": "DEMO-003", "recipient": "Palantir Technologies", "amount": 178_000_000, "date": "2025-04-08", "award_type": "Contract", "agency": "U.S. Army", "naics_code": "518210", "naics_desc": "Data Processing", "sector": "Information Technology"},
+    {"award_id": "DEMO-004", "recipient": "Leidos Holdings Inc", "amount": 312_000_000, "date": "2025-04-05", "award_type": "Contract", "agency": "Department of Defense", "naics_code": "541512", "naics_desc": "Computer Systems Design", "sector": "Professional Services"},
+    {"award_id": "DEMO-005", "recipient": "Booz Allen Hamilton", "amount": 95_000_000, "date": "2025-04-03", "award_type": "Contract", "agency": "Department of Homeland Security", "naics_code": "541611", "naics_desc": "Management Consulting", "sector": "Professional Services"},
+    {"award_id": "DEMO-006", "recipient": "CACI International", "amount": 56_000_000, "date": "2025-04-01", "award_type": "Delivery Order", "agency": "U.S. Army", "naics_code": "541519", "naics_desc": "IT Consulting", "sector": "Professional Services"},
+    {"award_id": "DEMO-007", "recipient": "Parsons Corporation", "amount": 43_200_000, "date": "2025-03-28", "award_type": "Contract", "agency": "U.S. Army Corps of Engineers", "naics_code": "237310", "naics_desc": "Highway Construction", "sector": "Construction"},
+    {"award_id": "DEMO-008", "recipient": "Tetra Tech Inc", "amount": 38_700_000, "date": "2025-03-25", "award_type": "Contract", "agency": "U.S. Air Force", "naics_code": "541330", "naics_desc": "Engineering Services", "sector": "Professional Services"},
+    {"award_id": "DEMO-009", "recipient": "AeroVironment Inc", "amount": 29_800_000, "date": "2025-03-22", "award_type": "Delivery Order", "agency": "U.S. Army", "naics_code": "336411", "naics_desc": "Aircraft Manufacturing", "sector": "Manufacturing"},
+    {"award_id": "DEMO-010", "recipient": "BWX Technologies Inc", "amount": 125_000_000, "date": "2025-03-20", "award_type": "Contract", "agency": "Department of Energy", "naics_code": "325180", "naics_desc": "Nuclear Material", "sector": "Manufacturing"},
+    {"award_id": "DEMO-011", "recipient": "ManTech International", "amount": 67_000_000, "date": "2025-03-18", "award_type": "Contract", "agency": "Department of Defense", "naics_code": "541519", "naics_desc": "IT Consulting", "sector": "Professional Services"},
+    {"award_id": "DEMO-012", "recipient": "V2X Inc", "amount": 52_000_000, "date": "2025-03-15", "award_type": "Delivery Order", "agency": "U.S. Air Force", "naics_code": "488190", "naics_desc": "Aviation Support", "sector": "Transportation"},
+    {"award_id": "DEMO-013", "recipient": "BigBear.ai Holdings", "amount": 21_500_000, "date": "2025-03-12", "award_type": "Contract", "agency": "National Geospatial-Intelligence Agency", "naics_code": "518210", "naics_desc": "Data Processing", "sector": "Information Technology"},
+    {"award_id": "DEMO-014", "recipient": "Maximus Federal Services", "amount": 88_000_000, "date": "2025-03-10", "award_type": "Contract", "agency": "Centers for Medicare & Medicaid", "naics_code": "621999", "naics_desc": "Health Services", "sector": "Healthcare"},
+    {"award_id": "DEMO-015", "recipient": "Telos Corporation", "amount": 18_300_000, "date": "2025-03-08", "award_type": "Contract", "agency": "Department of Homeland Security", "naics_code": "541512", "naics_desc": "Computer Systems Design", "sector": "Information Technology"},
+]
+
 DEMO_TOP_RECIPIENTS = [
     {"recipient": "Lockheed Martin",    "total_amount": 8_400_000_000, "contracts": 42},
     {"recipient": "Raytheon Technologies", "total_amount": 6_200_000_000, "contracts": 38},
@@ -124,7 +142,7 @@ def fetch_recent_awards(days_back: int = 30, limit: int = 100) -> pd.DataFrame:
             "Award ID": "award_id",
             "Recipient Name": "recipient",
             "Award Amount": "amount",
-            "Start Date": "start_date",
+            "Start Date": "date",
             "Award Type": "award_type",
             "Awarding Agency": "agency",
             "NAICS Code": "naics_code",
@@ -261,7 +279,17 @@ def recent_award_feed(days_back: int = 30, min_amount: float = 5_000_000, top_n:
     """Recent big federal awards as a chronological feed for the home page."""
     df = fetch_recent_awards(days_back=days_back, limit=200)
     if df.empty:
-        return pd.DataFrame()
+        demo = pd.DataFrame(DEMO_RECENT_AWARDS)
+        demo["ticker"] = None
+        from src.analysis.watchlist import CONTRACT_COMPANY_TO_TICKER
+        def _map_demo(name):
+            u = str(name).upper()
+            for key, t in CONTRACT_COMPANY_TO_TICKER.items():
+                if key in u:
+                    return t
+            return None
+        demo["ticker"] = demo["recipient"].apply(_map_demo)
+        return demo[demo["amount"] >= min_amount].head(top_n).reset_index(drop=True)
 
     df = df[df["amount"] >= min_amount].copy()
 

@@ -13,7 +13,8 @@ html, body, [class*="css"] {
 }
 
 .stApp { background: #000000; }
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+header { background: transparent !important; box-shadow: none !important; }
 .stDeployButton { display: none; }
 
 /* Tighten default Streamlit padding */
@@ -270,6 +271,22 @@ div[role="radiogroup"] > label:has(input:checked) > div:nth-child(2) {
     margin-top: 32px;
     line-height: 1.5;
 }
+
+/* Sidebar collapse/expand toggle — always visible against black bg */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    visibility: visible !important;
+    background: #1A1A1A !important;
+    border-radius: 0 8px 8px 0 !important;
+    border: 1px solid #2A2A2A !important;
+    border-left: none !important;
+}
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapseButton"] svg { fill: #8A8A8A !important; }
+[data-testid="collapsedControl"]:hover,
+[data-testid="stSidebarCollapseButton"]:hover { background: #2A2A2A !important; }
+[data-testid="collapsedControl"]:hover svg,
+[data-testid="stSidebarCollapseButton"]:hover svg { fill: #FFFFFF !important; }
 
 /* Hide some streamlit extras */
 [data-testid="stMarkdownContainer"] hr { border-color: #141414; margin: 12px 0; }
