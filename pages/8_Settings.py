@@ -53,10 +53,11 @@ st.markdown('<div class="feed-section">Data Sources</div>', unsafe_allow_html=Tr
 st.markdown("""
 FlowSignal pulls only free, public, primary-source data — and never shows fake fallbacks:
 - 🏛️ **USAspending.gov** — every federal contract award, updated daily
-- 🗂️ **SEC** — the registry of all ~10,000 U.S. public companies
-- 📈 **Yahoo Finance** — live prices, market caps, institutional holders, news
+- 🗂️ **SEC** — the registry of all ~10,000 U.S. public companies + Form 4 insider filings
+- 📈 **Yahoo Finance** — live prices, market caps, trading volume, news
 
-No personal data is collected. Saved stocks live in your browser session.
+No personal data is collected. Saved stocks live in your browser session only —
+they reset when you refresh the page.
 """)
 
 st.divider()
