@@ -50,14 +50,49 @@ def _naics_to_sector(naics) -> str:
         return "Other"
 
 
+def _award_payload(start_date, end_date, min_amount, page_size, page, new_awards_only):
+    time_period = {
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+    }
+    if new_awards_only:
+        # Only contracts SIGNED in the window — without this, USAspending
+        # returns decade-old contracts that merely had a recent modification,
+        # with lifetime totals masquerading as fresh money.
+        time_period["date_type"] = "new_awards_only"
+    return {
+        "filters": {
+            "time_period": [time_period],
+            "award_type_codes": ["A", "B", "C", "D"],  # contracts only
+            "award_amounts": [{"lower_bound": min_amount}],
+        },
+        "fields": [
+            "Award ID",
+            "Recipient Name",
+            "Award Amount",
+            "Start Date",
+            "Award Type",
+            "Awarding Agency",
+            "NAICS Code",
+            "NAICS Description",
+        ],
+        "sort": "Award Amount",
+        "order": "desc",
+        "limit": page_size,
+        "page": page,
+    }
+
+
 def fetch_recent_awards(
     days_back: int = 30,
     limit: int = 500,
     min_amount: float = 5_000_000,
+    new_awards_only: bool = True,
 ) -> pd.DataFrame:
     """
-    Recent contract awards, paginated up to `limit` rows, prefiltered
-    server-side to awards >= min_amount. Empty DataFrame on failure.
+    Contract awards newly signed in the window, paginated up to `limit`
+    rows, prefiltered server-side to >= min_amount. Empty DataFrame on
+    failure.
     """
     end_date = datetime.today()
     start_date = end_date - timedelta(days=days_back)
@@ -66,38 +101,18 @@ def fetch_recent_awards(
     results: list[dict] = []
     page = 1
     while len(results) < limit:
-        payload = {
-            "filters": {
-                "time_period": [
-                    {
-                        "start_date": start_date.strftime("%Y-%m-%d"),
-                        "end_date": end_date.strftime("%Y-%m-%d"),
-                    }
-                ],
-                "award_type_codes": ["A", "B", "C", "D"],  # contracts only
-                "award_amounts": [{"lower_bound": min_amount}],
-            },
-            "fields": [
-                "Award ID",
-                "Recipient Name",
-                "Award Amount",
-                "Start Date",
-                "Award Type",
-                "Awarding Agency",
-                "NAICS Code",
-                "NAICS Description",
-            ],
-            "sort": "Award Amount",
-            "order": "desc",
-            "limit": page_size,
-            "page": page,
-        }
+        payload = _award_payload(start_date, end_date, min_amount,
+                                 page_size, page, new_awards_only)
         try:
             resp = requests.post(
                 f"{USASPENDING_BASE}/search/spending_by_award/",
                 json=payload,
                 timeout=30,
             )
+            if resp.status_code == 400 and new_awards_only and page == 1:
+                # Older API revision rejects the date_type — degrade once
+                new_awards_only = False
+                continue
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
