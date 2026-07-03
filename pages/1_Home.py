@@ -1,12 +1,14 @@
-"""Home — clean Robinhood-style feed of federal awards and big money moves."""
+"""Home — the Signals feed: asymmetric events on small companies."""
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from datetime import datetime
 from src.ui.theme import inject_css, disclaimer
-from src.data.gov_contracts import recent_award_feed
-from src.data.sec_holdings import recent_moves_feed
+from src.data.gov_contracts import fetch_recent_awards, match_awards_to_tickers
+from src.data.ticker_map import load_sec_company_map, build_name_index
+from src.data.stock_detail import get_market_caps
+from src.analysis.asymmetry import build_contract_signals, format_asymmetry_line
 
 inject_css()
 
@@ -24,23 +26,56 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-
-# ── Feed toggle ───────────────────────────────────────────────────────────────
-feed_choice = st.radio(
-    "Feed",
-    ["🏛️ Federal Awards", "🏦 BlackRock & Big Money"],
-    horizontal=True,
-    label_visibility="collapsed",
+st.markdown('<div class="feed-section">Asymmetric Signals</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="feed-section-sub">Small companies that just landed federal money '
+    'that is HUGE relative to their size. No S&amp;P 500 names — ever.</div>',
+    unsafe_allow_html=True,
 )
 
+# ── Filters ───────────────────────────────────────────────────────────────────
+settings = st.session_state.get("settings", {})
+f1, f2, f3 = st.columns(3)
+with f1:
+    days = st.selectbox(
+        "Period", [7, 14, 30, 60, 90],
+        index=2,
+        format_func=lambda x: f"Last {x} days",
+        label_visibility="collapsed",
+    )
+with f2:
+    min_ratio_pct = st.selectbox(
+        "Min impact", [1, 2, 5, 10, 25],
+        index=[1, 2, 5, 10, 25].index(int(settings.get("min_ratio_pct", 1))),
+        format_func=lambda x: f"≥ {x}% of mkt cap",
+        label_visibility="collapsed",
+    )
+with f3:
+    max_cap_b = st.selectbox(
+        "Max size", [0.5, 1.0, 2.0, 5.0],
+        index=[0.5, 1.0, 2.0, 5.0].index(float(settings.get("max_cap_b", 5.0))),
+        format_func=lambda x: f"Cap < ${x:g}B",
+        label_visibility="collapsed",
+    )
 
-@st.cache_data(ttl=21600)
-def _awards(days, min_amt):
-    return recent_award_feed(days_back=days, min_amount=min_amt, top_n=25)
 
-@st.cache_data(ttl=86400)
-def _moves():
-    return recent_moves_feed(top_n=25)
+# ── Data pipeline (each stage cached separately) ──────────────────────────────
+@st.cache_data(ttl=86400, show_spinner=False)
+def _name_index():
+    sec_map = load_sec_company_map()
+    return build_name_index(sec_map), len(sec_map)
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _matched_awards(days_back: int):
+    awards = fetch_recent_awards(days_back=days_back, limit=500, min_amount=5_000_000)
+    if awards.empty:
+        return awards
+    index, _ = _name_index()
+    return match_awards_to_tickers(awards, index)
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _caps(tickers: tuple):
+    return get_market_caps(list(tickers))
 
 
 def go_to_detail(ticker: str):
@@ -48,164 +83,106 @@ def go_to_detail(ticker: str):
     st.switch_page("pages/3_Stock_Detail.py")
 
 
-def fmt_amount(amount: float) -> str:
-    if amount >= 1e9:
-        return f"${amount/1e9:.1f}B"
-    if amount >= 1e6:
-        return f"${amount/1e6:.0f}M"
-    return f"${amount/1e3:.0f}K"
-
-
 def fmt_date(date_str: str) -> str:
     try:
         d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
         delta = (datetime.now() - d).days
-        if delta == 0: return "today"
+        if delta <= 0: return "today"
         if delta == 1: return "yesterday"
         if delta < 7: return f"{delta}d ago"
         if delta < 30: return f"{delta//7}w ago"
-        if delta < 365: return f"{delta//30}mo ago"
-        return f"{delta//365}y ago"
+        return f"{delta//30}mo ago"
     except Exception:
         return ""
 
 
-def render_feed_row(ticker, name, primary, secondary, key, amount_color="green"):
-    """Robinhood-style row with click-through."""
-    icon = ticker[:3] if ticker else "?"
-    color_cls = "feed-amount-green" if amount_color == "green" else ""
-
-    col1, col2 = st.columns([10, 1])
-    with col1:
-        st.markdown(f"""
-        <div class="feed-row">
-            <div class="feed-left">
-                <div class="feed-icon">{icon}</div>
-                <div class="feed-text">
-                    <div class="feed-ticker">{ticker or "—"}</div>
-                    <div class="feed-company">{name}</div>
-                </div>
-            </div>
-            <div class="feed-right">
-                <div class="feed-amount {color_cls}">{primary}</div>
-                <div class="feed-meta">{secondary}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        if ticker:
-            st.button("→", key=key, on_click=go_to_detail, args=(ticker,))
+def fmt_cap(cap: float) -> str:
+    if cap >= 1e9:
+        return f"${cap/1e9:.1f}B company"
+    return f"${cap/1e6:.0f}M company"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FEED 1 — FEDERAL AWARDS
-# ══════════════════════════════════════════════════════════════════════════════
+with st.spinner("Scanning federal awards…"):
+    matched = _matched_awards(days)
 
-if "Federal" in feed_choice:
-    st.markdown('<div class="feed-section">Recent Federal Contract Awards</div>', unsafe_allow_html=True)
-    st.markdown('<div class="feed-section-sub">Biggest awards scanned from USAspending.gov</div>', unsafe_allow_html=True)
-
-    # Filter for amount threshold
-    f1, f2 = st.columns(2)
-    with f1:
-        days = st.selectbox(
-            "Period", [7, 14, 30, 60, 90],
-            index=2,
-            format_func=lambda x: f"Last {x} days",
-            label_visibility="collapsed",
-        )
-    with f2:
-        min_m = st.selectbox(
-            "Min amount", [1, 5, 10, 50, 100, 500],
-            index=1,
-            format_func=lambda x: f"≥ ${x}M",
-            label_visibility="collapsed",
-        )
-
-    with st.spinner(""):
-        awards = _awards(days, min_m * 1_000_000)
-
-    if awards.empty:
-        st.markdown('<div class="empty-state">No awards found above ${0}M in the last {1} days.<br>Try lowering the threshold.</div>'.format(min_m, days), unsafe_allow_html=True)
-    else:
-        for i, row in awards.iterrows():
-            ticker = row.get("ticker") or ""
-            recipient = str(row.get("recipient", "Unknown"))[:45]
-            agency = str(row.get("agency", ""))[:35]
-            amount = float(row.get("amount", 0) or 0)
-            date_str = str(row.get("date", ""))[:10] if row.get("date") else ""
-
-            secondary = f"{agency}" + (f" · {fmt_date(date_str)}" if date_str else "")
-            render_feed_row(
-                ticker=ticker,
-                name=recipient,
-                primary=fmt_amount(amount),
-                secondary=secondary,
-                key=f"fed_{i}",
-                amount_color="green",
-            )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FEED 2 — BLACKROCK / BIG MONEY
-# ══════════════════════════════════════════════════════════════════════════════
-
+if matched.empty:
+    st.error(
+        "USAspending.gov didn't return data. This is a live-data app with no fake "
+        "fallbacks — try refreshing in a minute.",
+        icon="🏛️",
+    )
 else:
-    st.markdown('<div class="feed-section">Big Money is Buying</div>', unsafe_allow_html=True)
-    st.markdown('<div class="feed-section-sub">Latest 13F position changes from BlackRock, Vanguard, State Street</div>', unsafe_allow_html=True)
+    candidates = tuple(sorted(matched["ticker"].dropna().unique()))
+    with st.spinner("Checking company sizes…"):
+        caps = _caps(candidates)
 
-    inst_filter = st.selectbox(
-        "Institution",
-        ["All institutions", "BlackRock only", "Vanguard only", "State Street only"],
-        label_visibility="collapsed",
+    signals = build_contract_signals(
+        matched, caps,
+        max_cap=max_cap_b * 1e9,
+        min_ratio=min_ratio_pct / 100,
     )
 
-    with st.spinner(""):
-        moves = _moves()
-
-    if inst_filter != "All institutions" and not moves.empty:
-        target = inst_filter.replace(" only", "")
-        moves = moves[moves["institution"] == target]
-
-    if moves.empty:
-        st.markdown('<div class="empty-state">No big money moves to show.</div>', unsafe_allow_html=True)
+    if signals.empty:
+        st.markdown(
+            '<div class="empty-state">No asymmetric events found in the last '
+            f'{days} days at these thresholds.<br>Try a longer period or lower '
+            'the impact filter — big mismatches are rare by design.</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        for i, row in moves.iterrows():
-            ticker = str(row.get("ticker") or "")
-            company = str(row.get("company", ticker))[:40]
-            institution = str(row.get("institution", ""))
-            action = str(row.get("action", ""))
-            value = float(row.get("value_current", 0) or 0)
-            change_pct = float(row.get("value_change_pct", 0) or 0)
+        st.caption(f"{len(signals)} signals · scanned {len(matched)} awards · updated {datetime.now().strftime('%H:%M')}")
+        for i, row in signals.iterrows():
+            ticker = row["ticker"]
+            ratio_pct = row["impact_ratio"] * 100
+            line = format_asymmetry_line(row)
+            meta = f"{fmt_cap(row['market_cap'])} · {str(row['agency'])[:32]}"
+            if row["date"]:
+                meta += f" · {fmt_date(row['date'])}"
 
-            action_word = "Just opened" if action == "NEW" else "Added to"
-            secondary = f"{action_word} · {institution}"
-            if action == "INCREASED" and change_pct > 0:
-                secondary += f" · +{change_pct:.0f}%"
+            col1, col2 = st.columns([10, 1])
+            with col1:
+                st.markdown(f"""
+                <div class="feed-row">
+                    <div class="feed-left">
+                        <div class="feed-icon">{ticker[:4]}</div>
+                        <div class="feed-text">
+                            <div class="feed-ticker">{ticker}</div>
+                            <div class="feed-company">{str(row['matched_name'])[:48]}</div>
+                            <div class="feed-meta" style="margin-top:3px;">{meta}</div>
+                        </div>
+                    </div>
+                    <div class="feed-right">
+                        <div class="feed-amount feed-amount-green">+{ratio_pct:.0f}%</div>
+                        <div class="feed-meta">of mkt cap</div>
+                    </div>
+                </div>
+                <div style="color:#D1D5DB; font-size:0.85rem; margin:-6px 0 10px 56px;">{line}</div>
+                """, unsafe_allow_html=True)
+            with col2:
+                st.button("→", key=f"sig_{i}_{ticker}", on_click=go_to_detail, args=(ticker,))
 
-            render_feed_row(
-                ticker=ticker,
-                name=company,
-                primary=fmt_amount(value),
-                secondary=secondary,
-                key=f"big_{i}",
-                amount_color="green",
-            )
+        # Transparency: what got scanned but not matched to a public company
+        unmatched = matched[matched["ticker"].isna()]["recipient"].dropna().unique()
+        if len(unmatched):
+            with st.expander(f"🔍 {len(unmatched)} recipients had no public-company match (private companies, subsidiaries, universities)"):
+                st.caption(" · ".join(sorted(set(str(u)[:40] for u in unmatched))[:60]))
 
 
-# ── Footer ────────────────────────────────────────────────────────────────────
-
-with st.expander("💡 How does FlowSignal work?"):
+with st.expander("💡 How FlowSignal finds hidden gems"):
     st.markdown("""
-**Two simple feeds, both updated daily:**
+**The idea: size mismatch = opportunity.**
 
-🏛️ **Federal Awards** — Every contract the U.S. government awards is public on USAspending.gov. We surface the biggest ones in the time window you choose.
+An $84M contract means nothing to Lockheed Martin. But to a $380M company,
+it's 22% of everything the company is worth — real revenue that can move the stock.
 
-🏦 **Big Money** — Every quarter, BlackRock, Vanguard, and State Street must publicly disclose every stock they hold. We track new positions and big additions.
+**How the feed works:**
+1. We scan every federal contract award on USAspending.gov (updated daily)
+2. Each recipient is matched against the SEC registry of all ~10,000 public companies
+3. We look up the company's market cap and compute **award ÷ company size**
+4. Only companies under your size ceiling with a material award make the feed
 
-**Why this matters:** When the U.S. government commits hundreds of millions to a company, that's guaranteed revenue. When the world's biggest investors open a brand-new position in a small company, that's a high-conviction bet.
-
-Tap any row to see live price chart, federal $ breakdown, and full institutional activity.
+**Why you won't see famous stocks:** the size ceiling ($5B max) is below the
+smallest company in the S&P 500. Everything here is under the radar by construction.
     """)
 
 disclaimer()

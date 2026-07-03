@@ -17,36 +17,15 @@ st.set_page_config(
 if "settings" not in st.session_state:
     st.session_state.settings = {
         "lookback_days": 30,
-        "min_score": 25,
-        "hidden_gems_only": True,
-        "sectors_filter": [],
+        "min_ratio_pct": 1,
+        "max_cap_b": 5.0,
     }
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
 
-# Navigation
-home          = st.Page("pages/1_Home.py",          title="Today's Picks",   icon="🎯", default=True)
-favorites     = st.Page("pages/2_Favorites.py",     title="Favorites",       icon="⭐")
-stock_detail  = st.Page("pages/3_Stock_Detail.py",  title="Stock Detail",    icon="📊")
-discover      = st.Page("pages/4_Discover.py",      title="Discover",        icon="🔍")
-gov           = st.Page("pages/5_Gov_Contracts.py", title="Gov Contracts",   icon="🏛️")
-big_money     = st.Page("pages/6_Big_Money.py",     title="Big Money",       icon="🏦")
-macro         = st.Page("pages/7_Macro.py",         title="Macro",           icon="📉")
-settings_page = st.Page("pages/8_Settings.py",      title="Settings",        icon="⚙️")
+home         = st.Page("pages/1_Home.py",         title="Signals",      icon="⚡", default=True)
+stock_detail = st.Page("pages/3_Stock_Detail.py", title="Stock Detail", icon="📊")
+settings_pg  = st.Page("pages/8_Settings.py",     title="Settings",     icon="⚙️")
 
-try:
-    nav = st.navigation(
-        {
-            "Picks":    [home, favorites, stock_detail, discover],
-            "Insights": [gov, big_money, macro],
-            "Account":  [settings_page],
-        },
-        position="sidebar",
-    )
-except TypeError:
-    nav = st.navigation({
-        "Picks":    [home, favorites, stock_detail, discover],
-        "Insights": [gov, big_money, macro],
-        "Account":  [settings_page],
-    })
+nav = st.navigation([home, stock_detail, settings_pg])
 nav.run()
