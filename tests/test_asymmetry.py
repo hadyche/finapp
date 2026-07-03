@@ -88,6 +88,16 @@ def test_awards_aggregate_and_dedupe():
     assert bbai["n_awards"] == 2
 
 
+def test_implausible_ratio_dropped_as_likely_mismatch():
+    awards = pd.DataFrame([{
+        "ticker": "EML", "matched_name": "Eastern Co", "confidence": "prefix",
+        "recipient": "EASTERN SHIPBUILDING GROUP", "amount": 1_600_000_000,
+        "agency": "DHS", "date": "2026-06-01", "award_id": "X1",
+    }])
+    out = build_contract_signals(awards, {"EML": 176_000_000})
+    assert out.empty  # 909% of market cap = almost certainly a wrong match
+
+
 def test_unknown_market_cap_excluded():
     awards = _awards()
     caps = {k: v for k, v in CAPS.items() if k != "MRCY"}  # MRCY cap unknown

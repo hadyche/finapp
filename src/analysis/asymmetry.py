@@ -13,6 +13,10 @@ import pandas as pd
 DEFAULT_MAX_CAP = 5_000_000_000
 # An award must be at least this fraction of market cap to matter.
 DEFAULT_MIN_RATIO = 0.01
+# Awards above this multiple of market cap are near-certainly a
+# name-matching error (a $1.6B contract does not go to a $176M company),
+# so they are dropped rather than shown as a 900% "opportunity".
+DEFAULT_MAX_RATIO = 2.0
 
 
 def compute_impact_ratio(award_amount, market_cap) -> float | None:
@@ -36,6 +40,7 @@ def build_contract_signals(
     caps: dict,
     max_cap: float = DEFAULT_MAX_CAP,
     min_ratio: float = DEFAULT_MIN_RATIO,
+    max_ratio: float = DEFAULT_MAX_RATIO,
 ) -> pd.DataFrame:
     """
     Aggregates matched contract awards into per-ticker signals.
@@ -71,7 +76,7 @@ def build_contract_signals(
         ratio = compute_impact_ratio(grp["amount"].sum(), cap)
         if ratio is None:
             continue  # unknown market cap → excluded
-        if float(cap) > max_cap or ratio < min_ratio:
+        if float(cap) > max_cap or ratio < min_ratio or ratio > max_ratio:
             continue
         top = grp.loc[grp["amount"].idxmax()]
         rows.append({

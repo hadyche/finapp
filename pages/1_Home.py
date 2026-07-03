@@ -176,7 +176,7 @@ An $84M contract means nothing to Lockheed Martin. But to a $380M company,
 it's 22% of everything the company is worth — real revenue that can move the stock.
 
 **How the feed works:**
-1. We scan every federal contract award on USAspending.gov (updated daily)
+1. We scan federal contracts **newly signed** in your time window on USAspending.gov — modifications to old contracts don't count
 2. Each recipient is matched against the SEC registry of all ~10,000 public companies
 3. We look up the company's market cap and compute **award ÷ company size**
 4. Only companies under your size ceiling with a material award make the feed

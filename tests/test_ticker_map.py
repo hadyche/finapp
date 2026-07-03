@@ -19,6 +19,8 @@ def _sample_map():
         {"cik": 1836981, "ticker": "BBAI", "title": "BigBear.ai Holdings, Inc."},
         {"cik": 320193,  "ticker": "AAPL", "title": "Apple Inc."},
         {"cik": 1373715, "ticker": "KTOS", "title": "KRATOS DEFENSE & SECURITY SOLUTIONS, INC."},
+        # single-word name after normalization ("Eastern Co" → "EASTERN")
+        {"cik": 31107,   "ticker": "EML",  "title": "Eastern Co"},
         # deliberate ambiguity: same normalized name, two tickers
         {"cik": 111,     "ticker": "DUP1", "title": "Duplicate Name Corp"},
         {"cik": 222,     "ticker": "DUP2", "title": "Duplicate Name Inc"},
@@ -63,6 +65,19 @@ def test_no_false_positive_on_word_boundary():
     idx = build_name_index(_sample_map())
     # "TELOSA" must not match "TELOS"
     assert match_recipient("TELOSA VENTURES LLC", idx) is None
+
+
+def test_single_word_names_never_prefix_match():
+    idx = build_name_index(_sample_map())
+    # The real-world bug: Eastern Shipbuilding (private) must NOT match
+    # Eastern Co (EML) just because both start with "EASTERN"
+    assert match_recipient("EASTERN SHIPBUILDING GROUP INC", idx) is None
+
+
+def test_single_word_names_still_match_exactly():
+    idx = build_name_index(_sample_map())
+    hit = match_recipient("EASTERN CO", idx)
+    assert hit and hit["ticker"] == "EML" and hit["confidence"] == "exact"
 
 
 def test_unknown_recipient_returns_none():

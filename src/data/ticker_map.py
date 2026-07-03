@@ -131,8 +131,11 @@ def match_recipient(recipient: str, index: dict) -> dict | None:
     best = None
     for entry in index["by_token"].get(first_token, []):
         cand = entry["norm_name"]
-        if len(cand) < 5:
-            continue  # single short names are too collision-prone
+        # Prefix matching needs a multi-word SEC name: a single word like
+        # "EASTERN" would wrongly claim "EASTERN SHIPBUILDING GROUP".
+        # Single-word names can still match, but only exactly (above).
+        if " " not in cand:
+            continue
         if norm == cand or norm.startswith(cand + " "):
             # prefer the longest matching SEC name
             if best is None or len(cand) > len(best["norm_name"]):
