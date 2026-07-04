@@ -177,19 +177,25 @@ def contracts_for_ticker(
     ticker: str,
     name_index: dict,
     days_back: int = 365,
+    awards: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """All recent awards whose recipient matches this ticker's company."""
-    df = fetch_recent_awards(days_back=days_back, limit=1000, min_amount=1_000_000)
-    if df.empty:
+    """
+    All recent awards whose recipient matches this ticker's company.
+    Pass a pre-fetched `awards` frame to reuse one pull across tickers.
+    """
+    df = awards if awards is not None else \
+        fetch_recent_awards(days_back=days_back, limit=1000, min_amount=1_000_000)
+    if df is None or df.empty:
         return pd.DataFrame()
     matched = match_awards_to_tickers(df, name_index)
     hits = matched[matched["ticker"] == ticker.upper()]
     return hits.sort_values("amount", ascending=False).reset_index(drop=True)
 
 
-def fed_dollar_summary(ticker: str, name_index: dict, days_back: int = 365) -> dict:
+def fed_dollar_summary(ticker: str, name_index: dict, days_back: int = 365,
+                       awards: pd.DataFrame | None = None) -> dict:
     """Total $, contract count, and agency breakdown for a ticker."""
-    df = contracts_for_ticker(ticker, name_index, days_back=days_back)
+    df = contracts_for_ticker(ticker, name_index, days_back=days_back, awards=awards)
     if df.empty:
         return {"total": 0, "count": 0, "agencies": pd.DataFrame(), "contracts": df}
 

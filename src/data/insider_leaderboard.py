@@ -11,7 +11,7 @@ import re
 import requests
 import pandas as pd
 
-SCREENER_URL = "http://openinsider.com/screener"
+SCREENER_URL = "https://openinsider.com/screener"
 HEADERS = {"User-Agent": "Mozilla/5.0 (finapp-research hadycheh@gmail.com)"}
 
 

@@ -79,15 +79,20 @@ def build_contract_signals(
         if float(cap) > max_cap or ratio < min_ratio or ratio > max_ratio:
             continue
         top = grp.loc[grp["amount"].idxmax()]
+
+        def _s(key):  # None/NaN → "" so the UI never shows the word "None"
+            v = top.get(key)
+            return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)
+
         rows.append({
             "ticker": ticker,
-            "matched_name": str(top.get("matched_name", "")),
-            "confidence": str(top.get("confidence", "")),
+            "matched_name": _s("matched_name"),
+            "confidence": _s("confidence"),
             "market_cap": float(cap),
             "total_awarded": float(grp["amount"].sum()),
             "largest_award": float(top["amount"]),
-            "agency": str(top.get("agency", "")),
-            "date": str(top.get("date", "")),
+            "agency": _s("agency"),
+            "date": _s("date"),
             "n_awards": int(len(grp)),
             "impact_ratio": float(ratio),
         })

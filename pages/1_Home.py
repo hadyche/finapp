@@ -26,7 +26,9 @@ def _name_index():
     return build_name_index(_sec_map())
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def _matched_awards(days_back: int):
+def _matched_awards(days_back: int, registry_ok: bool):
+    # registry_ok is part of the cache key: a failed registry fetch must
+    # not poison the awards cache with all-unmatched rows for 6 hours.
     awards = fetch_recent_awards(days_back=days_back, limit=500, min_amount=5_000_000)
     scanned_at = datetime.now().isoformat()
     if awards.empty:
@@ -123,8 +125,15 @@ with f3:
         label_visibility="collapsed",
     )
 
+registry_ok = bool(_name_index().get("exact"))
+if not registry_ok:
+    # Clear so the next rerun retries the download instead of caching failure
+    _sec_map.clear()
+    _name_index.clear()
+    st.warning("SEC company registry is unreachable — company matching is paused. Refresh in a minute.", icon="🗂️")
+
 with st.spinner("Scanning federal awards…"):
-    matched, scanned_at = _matched_awards(days)
+    matched, scanned_at = _matched_awards(days, registry_ok)
 
 if matched is None or matched.empty:
     st.error(
@@ -160,7 +169,7 @@ else:
 
         st.caption(
             f"{len(signals)} signals · scanned {len(matched)} awards · {fmt_ago(scanned_at)} · "
-            f"prices & insider data may lag up to 6h"
+            f"prices refresh every 6h, insider data every 24h"
         )
 
         for i, row in signals.iterrows():
