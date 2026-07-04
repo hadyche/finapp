@@ -54,6 +54,8 @@ st.markdown("""
 FlowSignal pulls only free, public, primary-source data — and never shows fake fallbacks:
 - 🏛️ **USAspending.gov** — every federal contract award, updated daily
 - 🗂️ **SEC** — the registry of all ~10,000 U.S. public companies + Form 4 insider filings
+- 🎩 **STOCK Act disclosures** — Congress members' trades (via Stock Watcher datasets)
+- 👤 **OpenInsider** — market-wide Form 4 purchase screener
 - 📈 **Yahoo Finance** — live prices, market caps, trading volume, news
 
 No personal data is collected. Saved stocks live in your browser session only —

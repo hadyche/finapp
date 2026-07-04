@@ -24,9 +24,10 @@ if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
 
 home         = st.Page("pages/1_Home.py",         title="Signals",      icon="⚡", default=True)
+smart_money  = st.Page("pages/5_Smart_Money.py",  title="Smart Money",  icon="🎩")
 stock_detail = st.Page("pages/3_Stock_Detail.py", title="Stock Detail", icon="📊")
 track_record = st.Page("pages/4_Track_Record.py", title="Track Record", icon="📜")
 settings_pg  = st.Page("pages/8_Settings.py",     title="Settings",     icon="⚙️")
 
-nav = st.navigation([home, stock_detail, track_record, settings_pg])
+nav = st.navigation([home, smart_money, stock_detail, track_record, settings_pg])
 nav.run()
