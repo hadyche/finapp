@@ -17,8 +17,12 @@ from datetime import datetime, timedelta
 
 CAPITOLTRADES_URL = "https://bff.capitoltrades.com/trades"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 finapp-research",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://www.capitoltrades.com",
+    "Referer": "https://www.capitoltrades.com/",
 }
 
 _TICKER_RE = re.compile(r"^[A-Z]{1,5}([.\-][A-Z])?$")
@@ -136,15 +140,19 @@ def recent_and_latest(df: pd.DataFrame, days_back: int) -> tuple[pd.DataFrame, s
     )
 
 
-def fetch_congress_trades(days_back: int = 90, max_pages: int = 8) -> tuple[pd.DataFrame, str | None]:
+def fetch_congress_trades(
+    days_back: int = 90, max_pages: int = 8
+) -> tuple[pd.DataFrame, str | None, str | None]:
     """
     Recent Congress trades, newest disclosures first.
-    Returns (trades_in_window, newest_disclosure_seen) so the UI can
-    distinguish 'feed failed' from 'nothing recent'.
-    (empty DataFrame, None) on total failure.
+    Returns (trades_in_window, newest_disclosure_seen, error_detail).
+    error_detail is None on success; on failure it carries a diagnostic
+    string (HTTP status, exception, or schema info) so the UI can show
+    exactly what went wrong instead of a generic banner.
     """
     cutoff = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     frames = []
+    detail = None
     for page in range(1, max_pages + 1):
         try:
             resp = requests.get(
@@ -153,15 +161,26 @@ def fetch_congress_trades(days_back: int = 90, max_pages: int = 8) -> tuple[pd.D
                 headers=HEADERS,
                 timeout=30,
             )
-            resp.raise_for_status()
-            batch = resp.json().get("data", [])
+            if resp.status_code != 200:
+                detail = f"HTTP {resp.status_code} from {CAPITOLTRADES_URL} (page {page}): {resp.text[:200]}"
+                break
+            body = resp.json()
+            batch = body.get("data", [])
         except Exception as e:
-            print(f"CapitolTrades fetch error (page {page}): {e}")
+            detail = f"{type(e).__name__} on page {page}: {e}"
             break
 
         if not batch:
+            if page == 1:
+                keys = sorted(body.keys()) if isinstance(body, dict) else type(body).__name__
+                detail = f"Empty 'data' in response; top-level keys: {keys}"
             break
+
         df = normalize_capitoltrades_rows(batch)
+        if df.empty and page == 1:
+            sample = sorted(batch[0].keys()) if isinstance(batch[0], dict) else type(batch[0]).__name__
+            detail = f"Parsed 0/{len(batch)} items — schema mismatch. First item keys: {sample}"
+            break
         frames.append(df)
 
         # Feed is newest-first: stop paging once past the window
@@ -171,9 +190,10 @@ def fetch_congress_trades(days_back: int = 90, max_pages: int = 8) -> tuple[pd.D
 
     frames = [f for f in frames if not f.empty]
     if not frames:
-        return pd.DataFrame(), None
+        return pd.DataFrame(), None, detail or "No data returned"
 
-    return recent_and_latest(pd.concat(frames, ignore_index=True), days_back)
+    recent, latest = recent_and_latest(pd.concat(frames, ignore_index=True), days_back)
+    return recent, latest, None
 
 
 def top_purchased_tickers(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:

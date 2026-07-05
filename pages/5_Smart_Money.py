@@ -34,9 +34,13 @@ def fmt_date(date_str: str) -> str:
 @st.cache_data(ttl=86400, show_spinner=False)
 def _congress(days: int):
     res = fetch_congress_trades(days_back=days)
-    # Tolerate a stale hot-reloaded module returning just the DataFrame
-    trades, latest = res if isinstance(res, tuple) else (res, None)
-    return trades, latest, datetime.now().isoformat()
+    if isinstance(res, tuple) and len(res) == 3:
+        trades, latest, detail = res
+    elif isinstance(res, tuple):  # tolerate stale hot-reloaded module
+        trades, latest, detail = res[0], res[1], None
+    else:
+        trades, latest, detail = res, None, None
+    return trades, latest, detail, datetime.now().isoformat()
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _insider_buys(days: int):
@@ -67,7 +71,7 @@ with tab_congress:
         )
 
     with st.spinner("Loading STOCK Act disclosures…"):
-        trades, latest_disclosure, fetched_at = _congress(cg_days)
+        trades, latest_disclosure, error_detail, fetched_at = _congress(cg_days)
 
     if trades.empty and latest_disclosure is None:
         st.error(
@@ -75,6 +79,11 @@ with tab_congress:
             "try again in a few minutes.",
             icon="🏛️",
         )
+        if error_detail:
+            with st.expander("🔧 Technical details"):
+                st.code(str(error_detail))
+        # Don't trap the failure in the 24h cache — retry on next load
+        _congress.clear()
     elif trades.empty:
         st.info(
             f"No disclosures in the last {cg_days} days. The newest disclosure in the "
@@ -148,6 +157,7 @@ with tab_insiders:
             "try again in a few minutes.",
             icon="👤",
         )
+        _insider_buys.clear()  # don't trap the failure in the 24h cache
     else:
         shown = buys.head(30)
         stats = _caps(tuple(sorted(shown["ticker"].unique())))
