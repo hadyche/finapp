@@ -65,10 +65,7 @@ with tab_congress:
             label_visibility="collapsed", key="cg_days",
         )
     with c2:
-        chamber = st.selectbox(
-            "Chamber", ["Both chambers", "House", "Senate"],
-            label_visibility="collapsed", key="cg_chamber",
-        )
+        st.caption("Senate only for now — House files PDFs, support coming")
 
     with st.spinner("Loading STOCK Act disclosures…"):
         trades, latest_disclosure, error_detail, fetched_at = _congress(cg_days)
@@ -86,27 +83,24 @@ with tab_congress:
         _congress.clear()
     elif trades.empty:
         st.info(
-            f"No disclosures in the last {cg_days} days. The newest disclosure in the "
-            f"dataset is from {latest_disclosure} — the community mirror may be lagging "
-            "behind the official filings.",
+            f"No stock trades parsed from filings in the last {cg_days} days "
+            f"(newest filing: {latest_disclosure}). Senators file in bursts — "
+            "try a wider window.",
             icon="🏛️",
         )
     else:
-        if chamber != "Both chambers":
-            trades = trades[trades["chamber"] == chamber]
-
         top = top_purchased_tickers(trades, top_n=8)
         if not top.empty:
             chips = "".join(
                 f'<span class="source-chip">{r.ticker} · {r.politicians} member{"s" if r.politicians > 1 else ""}</span>'
                 for r in top.itertuples()
             )
-            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Most bought across Congress</div>', unsafe_allow_html=True)
+            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Most bought across the Senate</div>', unsafe_allow_html=True)
             st.markdown(f"<div>{chips}</div>", unsafe_allow_html=True)
 
         st.caption(
-            f"{len(trades)} trades · newest disclosures first · politicians may report up to 45 days late · "
-            f"data: official STOCK Act filings via CapitolTrades"
+            f"{len(trades)} trades · newest disclosures first · senators may report up to 45 days late · "
+            f"data: official Senate eFD filings (efdsearch.senate.gov)"
         )
 
         for i, row in trades.head(60).iterrows():
@@ -130,8 +124,8 @@ with tab_congress:
                         </div>
                     </div>
                     <div class="feed-right">
-                        <div class="feed-amount">{row['amount'] or '—'}</div>
-                        <div class="feed-meta">est. value</div>
+                        <div class="feed-amount" style="font-size:0.85rem;">{row['amount'] or '—'}</div>
+                        <div class="feed-meta">reported range</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -198,10 +192,12 @@ with tab_insiders:
 
 with st.expander("💡 Why follow this money?"):
     st.markdown("""
-**🏛️ Congress** — Members of Congress must disclose their stock trades under the
-STOCK Act. Studies have repeatedly found their portfolios outperform the market.
+**🏛️ Congress** — Senators must disclose their stock trades under the STOCK Act,
+and we read those filings straight from the official Senate disclosure site.
+Studies have repeatedly found congressional portfolios outperform the market.
 They can disclose up to 45 days after trading, so you're seeing what they *did*,
-not what they're doing today — the "disclosed" date shows exactly how stale each trade is.
+not what they're doing today — the "disclosed" date shows exactly how stale each
+trade is. (House members file PDFs; House coverage is on the roadmap.)
 
 **👤 Insiders** — Officers and directors buying their own company's stock on the
 open market (SEC Form 4, code P) are betting their personal money on the business

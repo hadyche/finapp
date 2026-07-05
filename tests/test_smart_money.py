@@ -4,71 +4,71 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from src.data.congress_trades import (
-    normalize_capitoltrades_rows,
+    records_to_trades,
+    parse_amount_range,
     top_purchased_tickers,
     recent_and_latest,
 )
 from src.data.insider_leaderboard import parse_money, normalize_openinsider_table
 
 
-# ── Congress (CapitolTrades schema) ───────────────────────────────────────────
+# ── Congress (official Senate eFD PTR tables) ─────────────────────────────────
 
-CT_ROWS = [
-    # Fully embedded shape
-    {"txType": "buy", "value": 32500, "txDate": "2026-06-20", "pubDate": "2026-06-28",
-     "asset": {"assetTicker": "MRCY:US"},
-     "politician": {"firstName": "Jane", "lastName": "Smith", "chamber": "house"}},
-    # Sell, senate, fullName variant
-    {"txType": "sell", "value": 8000, "txDate": "2026-06-18", "pubDate": "2026-06-25",
-     "asset": {"assetTicker": "AAPL:US"},
-     "politician": {"fullName": "Thomas Example", "chamber": "senate"}},
-    # Flat/minimal shape (schema drift tolerance)
-    {"txType": "buy", "value": None, "txDate": "2026-06-15", "pubDate": "2026-07-01",
-     "ticker": "MRCY", "politicianName": "Bob Jones", "chamber": "house"},
-    # Non-stock asset → dropped
-    {"txType": "buy", "value": 1000, "txDate": "2026-06-15", "pubDate": "2026-07-01",
-     "asset": {"assetTicker": None},
-     "politician": {"fullName": "Bob Jones", "chamber": "house"}},
-    # No politician name → dropped
-    {"txType": "buy", "value": 1000, "txDate": "2026-06-15", "pubDate": "2026-07-01",
-     "asset": {"assetTicker": "TLS:US"}},
+PTR_RECORDS = [
+    {"#": 1, "Transaction Date": "06/20/2026", "Owner": "Self", "Ticker": "MRCY",
+     "Asset Name": "Mercury Systems Inc", "Asset Type": "Stock",
+     "Type": "Purchase", "Amount": "$15,001 - $50,000", "Comment": "--"},
+    {"#": 2, "Transaction Date": "06/18/2026", "Owner": "Spouse", "Ticker": "AAPL",
+     "Asset Name": "Apple Inc", "Asset Type": "Stock",
+     "Type": "Sale (Full)", "Amount": "$1,001 - $15,000", "Comment": "--"},
+    # Non-stock assets and blank tickers must be dropped
+    {"#": 3, "Transaction Date": "06/15/2026", "Owner": "Self", "Ticker": "--",
+     "Asset Name": "US Treasury Note", "Asset Type": "Other Securities",
+     "Type": "Purchase", "Amount": "$50,001 - $100,000", "Comment": "--"},
+    {"#": 4, "Transaction Date": "06/15/2026", "Owner": "Self", "Ticker": "--",
+     "Asset Name": "Municipal Bond", "Asset Type": "Municipal Security",
+     "Type": "Purchase", "Amount": "$15,001 - $50,000", "Comment": "--"},
 ]
 
 
-def test_normalize_capitoltrades_shapes():
-    df = normalize_capitoltrades_rows(CT_ROWS)
-    assert len(df) == 3  # two invalid rows dropped
-    buy = df[(df["ticker"] == "MRCY") & (df["politician"] == "Jane Smith")].iloc[0]
+def test_parse_amount_range():
+    assert parse_amount_range("$1,001 - $15,000") == (1001.0, 15000.0)
+    assert parse_amount_range("$50,000,001 +") == (50000001.0, 50000001.0)
+    assert parse_amount_range(None) == (None, None)
+    assert parse_amount_range("Unknown") == (None, None)
+
+
+def test_records_to_trades_maps_ptr_rows():
+    df = records_to_trades(PTR_RECORDS, "Jane Smith", "2026-06-28")
+    assert len(df) == 2  # bonds and blank tickers dropped
+    buy = df[df["ticker"] == "MRCY"].iloc[0]
+    assert buy["politician"] == "Jane Smith"
+    assert buy["chamber"] == "Senate"
     assert buy["action"] == "BUY"
-    assert buy["chamber"] == "House"
-    assert buy["amount"] == "≈$32K"  # 32.5 rounds half-to-even
+    assert buy["amount"] == "$15,001 - $50,000"
+    assert buy["amount_low"] == 15001.0
+    assert buy["transaction_date"] == "2026-06-20"  # US format normalized
     assert buy["disclosure_date"] == "2026-06-28"
 
 
-def test_normalize_capitoltrades_ticker_suffix_stripped():
-    df = normalize_capitoltrades_rows(CT_ROWS)
-    assert "AAPL" in df["ticker"].tolist()  # ":US" stripped
+def test_records_to_trades_sale_full_maps_to_sell():
+    df = records_to_trades(PTR_RECORDS, "Jane Smith", "2026-06-28")
     assert df[df["ticker"] == "AAPL"].iloc[0]["action"] == "SELL"
 
 
-def test_normalize_capitoltrades_flat_shape_and_null_value():
-    df = normalize_capitoltrades_rows(CT_ROWS)
-    flat = df[df["politician"] == "Bob Jones"].iloc[0]
-    assert flat["ticker"] == "MRCY"
-    assert flat["amount"] == ""  # null value → empty, never fake
-    assert flat["amount_low"] is None or pd.isna(flat["amount_low"])
-
-
-def test_normalize_capitoltrades_garbage():
-    assert normalize_capitoltrades_rows([]).empty
-    assert normalize_capitoltrades_rows([None, "x", 42]).empty
+def test_records_to_trades_garbage():
+    assert records_to_trades([], "X", "2026-01-01").empty
+    assert records_to_trades([None, "x", 42], "X", "2026-01-01").empty
 
 
 def test_top_purchased_tickers_counts_distinct_politicians():
-    df = normalize_capitoltrades_rows(CT_ROWS)
+    df = pd.concat([
+        records_to_trades(PTR_RECORDS, "Jane Smith", "2026-06-28"),
+        records_to_trades(PTR_RECORDS[:1], "Thomas Example", "2026-07-01"),
+    ], ignore_index=True)
     top = top_purchased_tickers(df)
     assert top.iloc[0]["ticker"] == "MRCY"
-    assert top.iloc[0]["politicians"] == 2  # Smith + Jones; AAPL sale excluded
+    assert top.iloc[0]["politicians"] == 2  # Smith + Example; AAPL sale excluded
     assert "AAPL" not in top["ticker"].tolist()
 
 
