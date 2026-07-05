@@ -1,11 +1,11 @@
-"""Premium dark theme — soft charcoal with elevation layers, not hard black."""
+"""Clean light theme — white, layered light greys, money-green accent."""
 import streamlit as st
 
 # Chart colors for plotly (CSS variables can't reach plotly figures)
-ACCENT = "#00D46E"
-ACCENT_FILL = "rgba(0, 212, 110, 0.08)"
-DOWN = "#F6465D"
-CHART_GRID = "#262B31"
+ACCENT = "#00B25D"
+ACCENT_FILL = "rgba(0, 178, 93, 0.08)"
+DOWN = "#E5484D"
+CHART_GRID = "#E9ECEF"
 
 
 def inject_css():
@@ -14,17 +14,19 @@ def inject_css():
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
-    --bg: #121417;          /* page background — cool charcoal, not black */
-    --surface: #1A1D21;     /* sidebar, inputs, expanders, popovers */
-    --surface-2: #22262B;   /* hovers, feed icons, chips */
-    --border: #2A2F35;      /* visible borders */
-    --hairline: #22262B;    /* row dividers */
-    --text: #F2F4F6;        /* primary text — off-white */
-    --text-2: #A5ADB6;      /* secondary text */
-    --muted: #6E7681;       /* captions, labels */
-    --accent: #00D46E;      /* money green, tuned for charcoal */
-    --accent-dim: #00B85F;
-    --down: #F6465D;        /* losses / warnings */
+    --bg: #FFFFFF;             /* page background */
+    --surface: #F6F7F9;        /* sidebar, inputs, expanders, popovers */
+    --surface-2: #ECEEF2;      /* hovers, feed icons, chips */
+    --border: #E1E4E8;         /* visible borders */
+    --hairline: #EEF0F3;       /* row dividers */
+    --text: #17191C;           /* primary text */
+    --text-2: #52585F;         /* secondary text */
+    --muted: #878E96;          /* captions, labels */
+    --accent: #00B25D;         /* money green — fills, buttons, brand */
+    --accent-strong: #067647;  /* green as small TEXT (bright green fails contrast on white) */
+    --accent-dim: #009C51;
+    --down: #E5484D;           /* losses — fills */
+    --down-strong: #B42318;    /* red as small text */
 }
 
 html, body, [class*="css"] {
@@ -162,7 +164,7 @@ header { background: transparent !important; box-shadow: none !important; }
     font-size: 1rem;
     font-weight: 700;
 }
-.feed-amount-green { color: var(--accent); }
+.feed-amount-green { color: var(--accent-strong); }
 .feed-meta {
     color: var(--muted);
     font-size: 0.75rem;
@@ -181,13 +183,13 @@ header { background: transparent !important; box-shadow: none !important; }
     transition: all 0.15s;
 }
 .stButton > button:hover {
-    background: var(--surface-2);
+    background: var(--surface);
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-strong);
 }
 .stButton > button[kind="primary"] {
     background: var(--accent);
-    color: #0B0F0C;
+    color: #FFFFFF;
     border: none;
     font-weight: 700;
 }
@@ -223,8 +225,8 @@ header { background: transparent !important; box-shadow: none !important; }
     margin-top: 2px;
     letter-spacing: -0.02em;
 }
-.stat-delta-up { color: var(--accent); font-size: 0.85rem; font-weight: 600; }
-.stat-delta-down { color: var(--down); font-size: 0.85rem; font-weight: 600; }
+.stat-delta-up { color: var(--accent-strong); font-size: 0.85rem; font-weight: 600; }
+.stat-delta-down { color: var(--down-strong); font-size: 0.85rem; font-weight: 600; }
 
 /* Stock detail header */
 .detail-ticker {
@@ -254,8 +256,8 @@ header { background: transparent !important; box-shadow: none !important; }
     font-weight: 600;
     font-size: 0.72rem;
 }
-.pill-green { background: rgba(0, 212, 110, 0.12); color: var(--accent); }
-.pill-red { background: rgba(246, 70, 93, 0.12); color: var(--down); }
+.pill-green { background: rgba(0, 178, 93, 0.12); color: var(--accent-strong); }
+.pill-red { background: rgba(229, 72, 77, 0.10); color: var(--down-strong); }
 .pill-gray { background: var(--surface-2); color: var(--text-2); }
 
 /* Source chips */
