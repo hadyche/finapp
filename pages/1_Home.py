@@ -247,7 +247,7 @@ else:
                         <div class="feed-meta">of company value</div>
                     </div>
                 </div>
-                <div style="color:#D1D5DB; font-size:0.85rem; margin:-6px 0 6px 56px;">{line}</div>
+                <div style="color:var(--text-2); font-size:0.85rem; margin:-6px 0 6px 56px;">{line}</div>
                 {tags_html}
                 """, unsafe_allow_html=True)
             with col2:

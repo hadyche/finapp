@@ -4,7 +4,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import plotly.graph_objects as go
-from src.ui.theme import inject_css, page_header, disclaimer
+from src.ui.theme import inject_css, page_header, disclaimer, ACCENT, ACCENT_FILL, CHART_GRID
 from src.ui.components import glossary_popover
 from src.data.favorites import is_favorite, toggle_favorite
 from src.data.stock_detail import get_price_history, get_quote, get_news
@@ -101,8 +101,8 @@ if not hist.empty:
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=hist["date"], y=hist["Close"],
-        mode="lines", line=dict(color="#00C805", width=2.5),
-        fill="tozeroy", fillcolor="rgba(0,200,5,0.08)",
+        mode="lines", line=dict(color=ACCENT, width=2.5),
+        fill="tozeroy", fillcolor=ACCENT_FILL,
         name="Price"
     ))
     fig.update_layout(
@@ -113,8 +113,8 @@ if not hist.empty:
         showlegend=False,
         hovermode="x unified",
     )
-    fig.update_yaxes(gridcolor="#141414", zerolinecolor="#141414")
-    fig.update_xaxes(gridcolor="#141414")
+    fig.update_yaxes(gridcolor=CHART_GRID, zerolinecolor=CHART_GRID)
+    fig.update_xaxes(gridcolor=CHART_GRID)
     st.plotly_chart(fig, use_container_width=True)
 else:
     st.info(f"Price history for {ticker} unavailable.")
