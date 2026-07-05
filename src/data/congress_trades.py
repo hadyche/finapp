@@ -87,6 +87,26 @@ def normalize_congress_rows(rows: list[dict], chamber: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+def recent_and_latest(df: pd.DataFrame, days_back: int) -> tuple[pd.DataFrame, str | None]:
+    """
+    Splits a normalized trades frame into (rows disclosed in the window,
+    newest disclosure date in the full frame). Comparison happens on
+    plain Python values — vectorized string comparisons on columns with
+    missing values raise under PyArrow-backed pandas. Pure, testable.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(), None
+    dates = [v for v in df["disclosure_date"].tolist() if isinstance(v, str) and v]
+    latest = max(dates) if dates else None
+    cutoff = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    keep = df["disclosure_date"].map(lambda v: isinstance(v, str) and v >= cutoff)
+    out = df[keep.astype(bool)]
+    return (
+        out.sort_values("disclosure_date", ascending=False).reset_index(drop=True),
+        latest,
+    )
+
+
 def fetch_congress_trades(days_back: int = 90) -> tuple[pd.DataFrame, str | None]:
     """
     Recent Congress trades from both chambers, newest disclosures first.
@@ -107,14 +127,7 @@ def fetch_congress_trades(days_back: int = 90) -> tuple[pd.DataFrame, str | None
     if not frames:
         return pd.DataFrame(), None
 
-    df = pd.concat(frames, ignore_index=True)
-    latest = df["disclosure_date"].dropna().max()
-    cutoff = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    df = df[df["disclosure_date"].notna() & (df["disclosure_date"] >= cutoff)]
-    return (
-        df.sort_values("disclosure_date", ascending=False).reset_index(drop=True),
-        latest,
-    )
+    return recent_and_latest(pd.concat(frames, ignore_index=True), days_back)
 
 
 def top_purchased_tickers(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
