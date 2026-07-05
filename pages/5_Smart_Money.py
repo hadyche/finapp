@@ -33,7 +33,9 @@ def fmt_date(date_str: str) -> str:
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _congress(days: int):
-    trades, latest = fetch_congress_trades(days_back=days)
+    res = fetch_congress_trades(days_back=days)
+    # Tolerate a stale hot-reloaded module returning just the DataFrame
+    trades, latest = res if isinstance(res, tuple) else (res, None)
     return trades, latest, datetime.now().isoformat()
 
 @st.cache_data(ttl=86400, show_spinner=False)

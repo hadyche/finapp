@@ -7,6 +7,7 @@ from src.data.congress_trades import (
     parse_amount_range,
     normalize_congress_rows,
     top_purchased_tickers,
+    recent_and_latest,
 )
 from src.data.insider_leaderboard import parse_money, normalize_openinsider_table
 
@@ -74,6 +75,29 @@ def test_top_purchased_tickers_counts_distinct_politicians():
 def test_normalize_congress_empty():
     assert normalize_congress_rows([], "House").empty
     assert top_purchased_tickers(pd.DataFrame()).empty
+
+
+def test_recent_and_latest_handles_missing_dates():
+    # None / pd.NA disclosure dates crash vectorized string comparisons on
+    # PyArrow-backed pandas (the live Streamlit Cloud crash) — must not raise
+    df = pd.DataFrame({
+        "politician": ["A", "B", "C"],
+        "chamber": ["House"] * 3,
+        "ticker": ["MRCY", "TLS", "BBAI"],
+        "action": ["BUY"] * 3,
+        "amount": [""] * 3,
+        "amount_low": [None] * 3,
+        "transaction_date": ["2026-06-01", None, "2026-06-20"],
+        "disclosure_date": pd.array(["2020-01-01", pd.NA, "2099-12-31"], dtype="string"),
+    })
+    recent, latest = recent_and_latest(df, days_back=90)
+    assert latest == "2099-12-31"
+    assert recent["ticker"].tolist() == ["BBAI"]  # NA row and 2020 row excluded
+
+
+def test_recent_and_latest_empty_frame():
+    recent, latest = recent_and_latest(pd.DataFrame(), 90)
+    assert recent.empty and latest is None
 
 
 # ── Insider leaderboard ───────────────────────────────────────────────────────
