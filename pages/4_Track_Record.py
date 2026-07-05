@@ -12,7 +12,7 @@ from src.data.stock_detail import get_market_stats, get_price_changes_since, get
 from src.analysis.asymmetry import build_contract_signals
 
 inject_css()
-page_header("📜 Track Record", "What actually happened to past signals — judge us by this")
+page_header("📜 Report Card", "Did our past picks actually go up? We check — and we show you the losers too.")
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -44,17 +44,18 @@ def _benchmark(dates: tuple):
 
 
 window = st.selectbox(
-    "Signals from…",
+    "Grade the picks from…",
     [(60, 30), (90, 30), (120, 60)],
-    format_func=lambda w: f"{w[1]}–{w[0]} days ago",
+    format_func=lambda w: f"{w[1]} to {w[0]} days ago",
+    help="We look at picks from a while back so there's been time to see what happened.",
 )
 
-with st.spinner("Rebuilding past signals and checking what happened…"):
+with st.spinner("Finding old picks and checking what happened to them…"):
     past = _past_signals(window[0], window[1])
 
 if past.empty:
-    st.info("No qualifying signals in that window (or USAspending is unavailable). "
-            "Genuine asymmetric events are rare — try a wider window.")
+    st.info("No picks from that time window (or the government website isn't answering). "
+            "Truly big wins are rare — try a wider window.")
 else:
     pairs = tuple((r["ticker"], str(r["date"])[:10]) for _, r in past.iterrows() if r["date"])
     changes = _outcomes(pairs)
@@ -65,52 +66,55 @@ else:
         chg = changes.get(r["ticker"])
         bench = spy.get(str(r["date"])[:10])
         rows.append({
-            "Ticker": r["ticker"],
+            "Stock": r["ticker"],
             "Company": str(r["matched_name"])[:36],
-            "Signed": str(r["date"])[:10],
-            "Award": f"${r['total_awarded']/1e6:.0f}M",
-            "Impact": f"{r['impact_ratio']*100:.0f}%",
-            "Return since": chg,
-            "S&P 500 same period": bench,
+            "Deal signed": str(r["date"])[:10],
+            "Deal size": f"${r['total_awarded']/1e6:.0f}M",
+            "vs company value": f"{r['impact_ratio']*100:.0f}%",
+            "Stock since then": chg,
+            "Stock market average": bench,
         })
     df = pd.DataFrame(rows)
 
-    scored = df.dropna(subset=["Return since"])
+    scored = df.dropna(subset=["Stock since then"])
     if not scored.empty:
-        wins = (scored["Return since"] > 0).sum()
-        beat = scored.dropna(subset=["S&P 500 same period"])
-        beat_n = (beat["Return since"] > beat["S&P 500 same period"]).sum()
+        wins = (scored["Stock since then"] > 0).sum()
+        beat = scored.dropna(subset=["Stock market average"])
+        beat_n = (beat["Stock since then"] > beat["Stock market average"]).sum()
 
         c1, c2, c3 = st.columns(3)
         c1.markdown(f"""<div class="stat-box">
-            <div class="stat-label">Signals</div>
+            <div class="stat-label">Picks we graded</div>
             <div class="stat-value">{len(scored)}</div>
         </div>""", unsafe_allow_html=True)
         c2.markdown(f"""<div class="stat-box">
             <div class="stat-label">Went up</div>
-            <div class="stat-value">{wins}/{len(scored)}</div>
+            <div class="stat-value">{wins} of {len(scored)}</div>
         </div>""", unsafe_allow_html=True)
-        median = scored["Return since"].median()
+        median = scored["Stock since then"].median()
         med_cls = "stat-delta-up" if median >= 0 else "stat-delta-down"
         c3.markdown(f"""<div class="stat-box">
-            <div class="stat-label">Median return</div>
+            <div class="stat-label">Typical result</div>
             <div class="stat-value {med_cls}" style="font-size:1.4rem;">{median:+.1f}%</div>
         </div>""", unsafe_allow_html=True)
         if len(beat):
-            st.caption(f"{beat_n} of {len(beat)} beat the S&P 500 over the same period.")
+            st.caption(
+                f"{beat_n} of {len(beat)} did better than the stock market average "
+                f"(the S&P 500 — the 500 biggest U.S. companies) over the same time."
+            )
 
     show = df.copy()
-    for col in ["Return since", "S&P 500 same period"]:
+    for col in ["Stock since then", "Stock market average"]:
         show[col] = show[col].map(lambda v: f"{v:+.1f}%" if pd.notna(v) else "—")
     st.dataframe(show, hide_index=True, use_container_width=True)
 
 st.markdown("""
 <div style="background: rgba(255,183,77,0.06); border: 1px solid rgba(255,183,77,0.25);
 border-radius: 10px; padding: 14px 18px; margin-top: 20px; color: #FFCC80; font-size: 0.82rem;">
-<strong>Read this honestly:</strong> this page uses today's market caps to reconstruct
-past signals (caps at signal time aren't stored yet), the sample sizes are small,
-and short windows are noisy. It exists so you can see whether the idea works —
-not to promise it does. A losing window is real information too.
+<strong>Being honest with you:</strong> this report card is young, the number of picks
+is small, and short time windows are noisy. It exists so YOU can see whether this
+idea actually works — not to promise it does. A bad report card is useful
+information too: it tells you not to bet money on this yet.
 </div>
 """, unsafe_allow_html=True)
 

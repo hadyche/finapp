@@ -7,40 +7,40 @@ from src.ui.theme import inject_css, page_header
 from src.data.favorites import get_favorites
 
 inject_css()
-page_header("⚙️ Settings", "Tune what counts as an asymmetric signal")
+page_header("⚙️ Settings", "Choose what counts as a big win")
 
 settings = st.session_state.settings
 
-st.markdown('<div class="feed-section">Signal Thresholds</div>', unsafe_allow_html=True)
-st.markdown('<div class="feed-section-sub">Defaults for the Signals feed</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">Your filters</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">These become the starting filters on the Picks page</div>', unsafe_allow_html=True)
 
 settings["min_ratio_pct"] = st.select_slider(
-    "Minimum impact — award value as % of company market cap",
+    "How big must a deal be, compared to the company's value?",
     options=[1, 2, 5, 10, 25],
     value=int(settings.get("min_ratio_pct", 1)),
-    format_func=lambda x: f"{x}%",
-    help="Higher = only the most dramatic mismatches. A 25% event means the contract is worth a quarter of the whole company.",
+    format_func=lambda x: f"At least {x}%",
+    help="Slide right to only see the most dramatic wins. At 25%, the deal is worth a quarter of the entire company.",
 )
 settings["max_cap_b"] = st.select_slider(
-    "Maximum company size (market cap)",
+    "Biggest company you want to see",
     options=[0.5, 1.0, 2.0, 5.0],
     value=float(settings.get("max_cap_b", 5.0)),
-    format_func=lambda x: f"${x:g}B",
-    help="$5B is already below the smallest S&P 500 company. Go lower for true micro-caps (higher risk, thinner liquidity).",
+    format_func=lambda x: f"Under ${x:g} billion",
+    help="Even $5 billion is smaller than every famous stock. Slide left for truly tiny companies — bigger potential, bigger risk, harder to trade.",
 )
 
 st.divider()
 
-st.markdown('<div class="feed-section">Your Data</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">Your saved stocks</div>', unsafe_allow_html=True)
 favs = get_favorites()
 fav_col1, fav_col2 = st.columns([1, 3])
 with fav_col1:
-    st.metric("Saved stocks", len(favs))
+    st.metric("Saved", len(favs))
 with fav_col2:
     if favs:
-        st.caption("**Saved tickers:** " + ", ".join(sorted(favs)))
+        st.caption("**Your stocks:** " + ", ".join(sorted(favs)))
     else:
-        st.caption("No saved stocks yet — tap ☆ Save on any stock's detail page.")
+        st.caption("Nothing saved yet — tap ☆ Save on any stock's page.")
 
 if favs and st.button("🗑️ Clear all saved stocks"):
     st.session_state.favorites = set()
@@ -49,17 +49,18 @@ if favs and st.button("🗑️ Clear all saved stocks"):
 
 st.divider()
 
-st.markdown('<div class="feed-section">Data Sources</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">Where the information comes from</div>', unsafe_allow_html=True)
 st.markdown("""
-FlowSignal pulls only free, public, primary-source data — and never shows fake fallbacks:
-- 🏛️ **USAspending.gov** — every federal contract award, updated daily
-- 🗂️ **SEC** — the registry of all ~10,000 U.S. public companies + Form 4 insider filings
-- 🎩 **Senate eFD** — senators' stock trades, read from the official disclosure site
-- 👤 **OpenInsider** — market-wide Form 4 purchase screener
-- 📈 **Yahoo Finance** — live prices, market caps, trading volume, news
+Everything in FlowSignal comes from free, public, official sources — and we never
+show made-up numbers. If a source is down, we tell you.
 
-No personal data is collected. Saved stocks live in your browser session only —
-they reset when you refresh the page.
+- 🏛️ **USAspending.gov** — the government's own list of every deal it makes
+- 🗂️ **SEC.gov** — the official registry of all U.S. public companies, plus the forms bosses file when they buy stock
+- 🎩 **Senate.gov** — senators' trade reports, from the official disclosure site
+- 👤 **OpenInsider** — a free view of the SEC's insider-buying filings
+- 📈 **Yahoo Finance** — stock prices and company sizes
+
+We don't collect anything about you. Saved stocks only last until you refresh the page.
 """)
 
 st.divider()
@@ -75,10 +76,12 @@ Found a bug or have a feature request? Reach out on GitHub.
 st.markdown("""
 <div style="background: rgba(255,82,82,0.06); border: 1px solid rgba(255,82,82,0.2);
 border-radius: 10px; padding: 14px 18px; margin-top: 24px; color: #FCA5A5; font-size: 0.82rem;">
-<strong>⚠️ Legal Disclaimer:</strong> FlowSignal is for informational and educational purposes only.
-It is NOT investment advice and we are NOT licensed financial advisors. Small and micro-cap
-stocks are volatile and often thinly traded. Past signals do not guarantee future returns.
-You assume all risk for any investment decisions. Always consult a licensed financial
-advisor before investing.
+<strong>⚠️ The important warning (please actually read this):</strong> FlowSignal shows you
+interesting public information — it does NOT tell you what to buy. We are not financial
+advisors. Small companies' stocks can drop fast and hard, and past results don't promise
+future ones. Never invest money you can't afford to lose, and talk to a licensed
+financial advisor before making real decisions. In legal terms: this is for informational
+and educational purposes only and is not investment advice; you assume all risk for
+your investment decisions.
 </div>
 """, unsafe_allow_html=True)

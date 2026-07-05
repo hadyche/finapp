@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import plotly.graph_objects as go
 from src.ui.theme import inject_css, page_header, disclaimer
+from src.ui.components import glossary_popover
 from src.data.favorites import is_favorite, toggle_favorite
 from src.data.stock_detail import get_price_history, get_quote, get_news
 from src.data.gov_contracts import fed_dollar_summary
@@ -16,9 +17,9 @@ inject_css()
 ticker = st.session_state.get("selected_ticker")
 
 if not ticker:
-    page_header("Stock Detail")
-    st.info("👈 Pick a stock from the Signals feed to view its details.")
-    manual = st.text_input("Or type a ticker symbol:", placeholder="e.g. MRCY").upper().strip()
+    page_header("Stock Details")
+    st.info("👈 Tap any stock on the Picks page to see everything about it.")
+    manual = st.text_input("Or type a stock's nickname (ticker):", placeholder="e.g. MRCY").upper().strip()
     if manual:
         st.session_state.selected_ticker = manual
         st.rerun()
@@ -42,9 +43,10 @@ with head_l:
 with head_r:
     fav = is_favorite(ticker)
     if st.button("⭐ Saved" if fav else "☆ Save", use_container_width=True, key="detail_fav",
-                 help="Saved for this browser session only — resets on refresh"):
+                 help="Saved until you refresh the page"):
         toggle_favorite(ticker)
         st.rerun()
+    glossary_popover()
 
 # ── Live quote stats ───────────────────────────────────────────────────────────
 if quote.get("price"):
@@ -62,15 +64,15 @@ if quote.get("price"):
         <div class="{cp_class}">{cp_sign}{quote.get('change',0):.2f} ({cp_sign}{quote.get('change_pct',0):.2f}%)</div>
     </div>""", unsafe_allow_html=True)
     s2.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Market Cap</div>
+        <div class="stat-label">What the whole company is worth</div>
         <div class="stat-value">{_fmt(quote.get('market_cap'), '$', 'B', 1e9)}</div>
     </div>""", unsafe_allow_html=True)
     s3.markdown(f"""<div class="stat-box">
-        <div class="stat-label">52-week range</div>
+        <div class="stat-label">Lowest–highest price this year</div>
         <div class="stat-value" style="font-size:1.05rem;">${(quote.get('fifty_two_low') or 0):.2f} – ${(quote.get('fifty_two_high') or 0):.2f}</div>
     </div>""", unsafe_allow_html=True)
     s4.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Volume</div>
+        <div class="stat-label">Shares traded today</div>
         <div class="stat-value">{_fmt(quote.get('volume'), '', 'M', 1e6)}</div>
     </div>""", unsafe_allow_html=True)
 else:
@@ -79,7 +81,7 @@ else:
 st.divider()
 
 # ── Price chart with timeframe toggle ──────────────────────────────────────────
-st.markdown('<div class="feed-section">📈 Price Chart</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">📈 The Price Over Time</div>', unsafe_allow_html=True)
 tf_cols = st.columns(8)
 timeframes = ["1D", "5D", "1M", "3M", "6M", "1Y", "5Y", "Max"]
 if "chart_tf" not in st.session_state:
@@ -120,8 +122,8 @@ else:
 st.divider()
 
 # ── Federal $ breakdown ───────────────────────────────────────────────────────
-st.markdown('<div class="feed-section">🏛️ Federal Government Money</div>', unsafe_allow_html=True)
-st.markdown('<div class="feed-section-sub">Recent federal contracts matched to this company</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">🏛️ Money From the Government</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">Every deal the U.S. government makes is public. Here\'s what this company has won recently.</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _sec_map():
@@ -144,50 +146,53 @@ def _fed(t, days):
 fed_period_col, _ = st.columns([1, 3])
 with fed_period_col:
     fed_days = st.selectbox(
-        "Period",
+        "How far back to look",
         [90, 180, 365],
         index=2,
         format_func=lambda x: f"Last {x} days",
         key="fed_period",
     )
 
-with st.spinner("Scanning USAspending…"):
+with st.spinner("Reading government records…"):
     fed = _fed(ticker, fed_days)
 
 if fed["total"] > 0:
     cap = quote.get("market_cap")
     f1, f2, f3 = st.columns(3)
     f1.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Total Awarded</div>
+        <div class="stat-label">Money won</div>
         <div class="stat-value">${fed['total']/1e6:.1f}M</div>
     </div>""", unsafe_allow_html=True)
     f2.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Contracts</div>
+        <div class="stat-label">Number of deals</div>
         <div class="stat-value">{fed['count']}</div>
     </div>""", unsafe_allow_html=True)
     impact = f"{fed['total']/cap*100:.1f}%" if cap else "—"
     f3.markdown(f"""<div class="stat-box">
-        <div class="stat-label">vs Market Cap</div>
+        <div class="stat-label">Compared to company's value</div>
         <div class="stat-value">{impact}</div>
     </div>""", unsafe_allow_html=True)
 
-    st.markdown("**Top funding agencies**")
+    st.markdown("**Which parts of the government paid them**")
     ag = fed["agencies"].copy()
     ag["total"] = ag["total"].apply(lambda x: f"${x:,.0f}")
+    ag = ag.rename(columns={"agency": "Government agency", "total": "Paid", "count": "Deals"})
     st.dataframe(ag, hide_index=True, use_container_width=True)
 
-    with st.expander(f"📋 All {fed['count']} contracts"):
+    with st.expander(f"📋 See all {fed['count']} deals"):
         cts = fed["contracts"][["date", "recipient", "amount", "agency", "award_type"]].copy()
         cts["amount"] = cts["amount"].apply(lambda x: f"${x:,.0f}")
+        cts = cts.rename(columns={"date": "Signed", "recipient": "Who won it",
+                                  "amount": "Worth", "agency": "Paid by", "award_type": "Deal type"})
         st.dataframe(cts, hide_index=True, use_container_width=True)
 else:
-    st.info(f"No federal contracts matched to {ticker} in the selected period (or USAspending is unavailable).")
+    st.info(f"We didn't find any government deals for {ticker} in this time window (or the government website isn't answering).")
 
 st.divider()
 
 # ── Liquidity & Trading ───────────────────────────────────────────────────────
-st.markdown('<div class="feed-section">💧 Liquidity & Trading</div>', unsafe_allow_html=True)
-st.markdown('<div class="feed-section-sub">Can you actually get in and out of this stock?</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">💧 How easy is it to buy & sell?</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">If very few people trade a stock, buying or selling it can be tricky.</div>', unsafe_allow_html=True)
 
 avg_vol = quote.get("avg_volume")
 price = quote.get("price")
@@ -195,29 +200,29 @@ adv_usd = (avg_vol * price) if (avg_vol and price) else None
 
 l1, l2, l3 = st.columns(3)
 l1.markdown(f"""<div class="stat-box">
-    <div class="stat-label">Avg daily volume</div>
+    <div class="stat-label">Shares traded per day</div>
     <div class="stat-value">{f"{avg_vol/1e6:.2f}M" if avg_vol else "—"}</div>
 </div>""", unsafe_allow_html=True)
 l2.markdown(f"""<div class="stat-box">
-    <div class="stat-label">Avg daily $ traded</div>
+    <div class="stat-label">Dollars traded per day</div>
     <div class="stat-value">{f"${adv_usd/1e6:.1f}M" if adv_usd else "—"}</div>
 </div>""", unsafe_allow_html=True)
 if adv_usd is not None and adv_usd < 1_000_000:
     l3.markdown("""<div class="stat-box">
-        <div class="stat-label">Tradability</div>
-        <div class="stat-value stat-delta-down" style="font-size:1.05rem;">⚠ Thin — orders can move the price</div>
+        <div class="stat-label">Verdict</div>
+        <div class="stat-value stat-delta-down" style="font-size:1.05rem;">⚠ Hard to trade — be careful</div>
     </div>""", unsafe_allow_html=True)
 elif adv_usd is not None:
     l3.markdown("""<div class="stat-box">
-        <div class="stat-label">Tradability</div>
-        <div class="stat-value stat-delta-up" style="font-size:1.05rem;">OK for retail size</div>
+        <div class="stat-label">Verdict</div>
+        <div class="stat-value stat-delta-up" style="font-size:1.05rem;">✓ Easy enough for normal amounts</div>
     </div>""", unsafe_allow_html=True)
 
 st.divider()
 
 # ── Insider activity (SEC Form 4) ─────────────────────────────────────────────
-st.markdown('<div class="feed-section">👤 Insider Buying</div>', unsafe_allow_html=True)
-st.markdown('<div class="feed-section-sub">Officers &amp; directors buying with their own money — SEC Form 4, last 90 days</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">👤 Are the bosses buying?</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section-sub">When a company\'s own executives spend their personal money on its stock, they believe it\'s going up. (From official SEC filings, last 90 days.)</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _insider(t):
@@ -232,21 +237,21 @@ with st.spinner("Checking SEC Form 4 filings…"):
 if ins:
     i1, i2, i3 = st.columns(3)
     i1.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Open-market buys</div>
+        <div class="stat-label">Times they bought</div>
         <div class="stat-value">{ins['n_buys']}</div>
     </div>""", unsafe_allow_html=True)
     i2.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Distinct insiders</div>
+        <div class="stat-label">Different bosses buying</div>
         <div class="stat-value">{ins['n_insiders']}</div>
     </div>""", unsafe_allow_html=True)
     i3.markdown(f"""<div class="stat-box">
-        <div class="stat-label">Total invested</div>
+        <div class="stat-label">Their own money spent</div>
         <div class="stat-value">${ins['total_usd']/1e3:,.0f}K</div>
     </div>""", unsafe_allow_html=True)
     if ins.get("last_date"):
-        st.caption(f"Most recent buy: {ins['last_date']}. Multiple insiders buying together is the strongest version of this signal.")
+        st.caption(f"Most recent buy: {ins['last_date']}. Several bosses buying at the same time is the strongest good sign there is.")
 else:
-    st.caption("No open-market insider purchases found in the last 90 days (or EDGAR is unavailable). Insider *sales* are normal and not tracked — buys are the signal.")
+    st.caption("No bosses bought their own stock in the last 90 days (or the SEC website isn't answering). Note: bosses *selling* is normal — everyone needs cash sometimes. It's the *buying* that means something.")
 
 st.divider()
 
@@ -270,7 +275,7 @@ else:
     st.caption("No recent news.")
 
 if quote.get("summary"):
-    with st.expander("ℹ️ About this company"):
+    with st.expander("ℹ️ What does this company actually do?"):
         st.write(quote["summary"])
 
 disclaimer()
