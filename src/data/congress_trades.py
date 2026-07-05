@@ -1,11 +1,13 @@
 """
 Stock trades disclosed by members of Congress under the STOCK Act.
 
-Sources: the Senate/House Stock Watcher community datasets, which mirror
-the official disclosure filings (efdsearch.senate.gov and
-disclosures-clerk.house.gov) as clean JSON. Members may disclose up to
-45 days after trading — the disclosure date is shown so the lag is
-always visible.
+Source: CapitolTrades' public trade feed (aggregates the official
+efdsearch.senate.gov and disclosures-clerk.house.gov filings). The
+previous source (Stock Watcher S3 datasets) was shut down — AWS now
+returns AccessDenied for those buckets.
+
+Members may disclose up to 45 days after trading — the disclosure date
+is shown so the lag is always visible.
 """
 
 import re
@@ -13,76 +15,103 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 
-HOUSE_URL = "https://house-stock-watcher-data.s3-us-west-2.amazonaws.com/data/all_transactions.json"
-SENATE_URL = "https://senate-stock-watcher-data.s3-us-west-2.amazonaws.com/aggregate/all_transactions.json"
-HEADERS = {"User-Agent": "finapp-research hadycheh@gmail.com"}
+CAPITOLTRADES_URL = "https://bff.capitoltrades.com/trades"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 finapp-research",
+    "Accept": "application/json",
+}
 
 _TICKER_RE = re.compile(r"^[A-Z]{1,5}([.\-][A-Z])?$")
 
 
-def _parse_date(s) -> str | None:
-    """Normalizes '2021-09-27' or '09/27/2021' to ISO. None if unparseable."""
-    s = str(s or "").strip()
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(s[:10], fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return None
-
-
-def parse_amount_range(s) -> tuple[float | None, float | None]:
-    """'$1,001 - $15,000' → (1001.0, 15000.0). (None, None) if unparseable."""
-    nums = re.findall(r"\$([\d,]+)", str(s or ""))
-    if not nums:
-        return None, None
-    vals = [float(n.replace(",", "")) for n in nums]
-    low = vals[0]
-    high = vals[1] if len(vals) > 1 else vals[0]
-    return low, high
-
-
 def _clean_ticker(t) -> str | None:
     t = str(t or "").strip().upper()
+    t = t.split(":")[0]  # CapitolTrades uses "AAPL:US"
     return t if _TICKER_RE.match(t) else None
 
 
-def _norm_action(raw: str) -> str:
+def _iso_date(s) -> str | None:
+    s = str(s or "").strip()[:10]
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _fmt_value(v) -> str:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if v <= 0:
+        return ""
+    if v >= 1e6:
+        return f"≈${v/1e6:.1f}M"
+    if v >= 1e3:
+        return f"≈${v/1e3:.0f}K"
+    return f"≈${v:.0f}"
+
+
+def _norm_action(raw) -> str:
     r = str(raw or "").strip().lower()
-    if "purchase" in r:
+    if "buy" in r or "purchase" in r:
         return "BUY"
-    if "sale" in r or "sold" in r:
+    if "sell" in r or "sale" in r:
         return "SELL"
     if "exchange" in r:
         return "EXCHANGE"
     return "OTHER"
 
 
-def normalize_congress_rows(rows: list[dict], chamber: str) -> pd.DataFrame:
+def normalize_capitoltrades_rows(rows: list[dict]) -> pd.DataFrame:
     """
-    Normalizes House or Senate Stock Watcher rows to one schema:
+    Normalizes CapitolTrades trade items to the app schema:
     [politician, chamber, ticker, action, amount, amount_low,
-     transaction_date, disclosure_date]. Pure logic — unit-testable.
+     transaction_date, disclosure_date].
+    Tolerates schema variation (embedded politician/asset objects or
+    flat ids) — unparseable rows are skipped, never guessed.
+    Pure logic — unit-testable.
     """
     out = []
     for r in rows or []:
-        ticker = _clean_ticker(r.get("ticker"))
+        if not isinstance(r, dict):
+            continue
+
+        asset = r.get("asset") if isinstance(r.get("asset"), dict) else {}
+        ticker = _clean_ticker(
+            asset.get("assetTicker") or r.get("assetTicker") or r.get("ticker")
+        )
         if not ticker:
             continue
-        politician = str(r.get("representative") or r.get("senator") or "").strip()
-        politician = re.sub(r"^(Hon\.|Mr\.|Ms\.|Mrs\.)\s+", "", politician)
-        if not politician:
+
+        pol = r.get("politician") if isinstance(r.get("politician"), dict) else {}
+        name = str(
+            pol.get("fullName")
+            or " ".join(x for x in (pol.get("firstName"), pol.get("lastName")) if x)
+            or r.get("politicianName")
+            or ""
+        ).strip()
+        if not name:
             continue
-        low, _high = parse_amount_range(r.get("amount"))
+
+        chamber = str(pol.get("chamber") or r.get("chamber") or "").strip().title()
+        if chamber not in ("House", "Senate"):
+            chamber = "—"
+
+        try:
+            value = float(r.get("value")) if r.get("value") is not None else None
+        except (TypeError, ValueError):
+            value = None
+
         out.append({
-            "politician": politician,
+            "politician": name,
             "chamber": chamber,
             "ticker": ticker,
-            "action": _norm_action(r.get("type")),
-            "amount": str(r.get("amount") or "").strip(),
-            "amount_low": low,
-            "transaction_date": _parse_date(r.get("transaction_date")),
-            "disclosure_date": _parse_date(r.get("disclosure_date")),
+            "action": _norm_action(r.get("txType") or r.get("type")),
+            "amount": _fmt_value(value),
+            "amount_low": value,
+            "transaction_date": _iso_date(r.get("txDate") or r.get("transactionDate")),
+            "disclosure_date": _iso_date(r.get("pubDate") or r.get("disclosureDate")),
         })
     return pd.DataFrame(out)
 
@@ -107,21 +136,38 @@ def recent_and_latest(df: pd.DataFrame, days_back: int) -> tuple[pd.DataFrame, s
     )
 
 
-def fetch_congress_trades(days_back: int = 90) -> tuple[pd.DataFrame, str | None]:
+def fetch_congress_trades(days_back: int = 90, max_pages: int = 8) -> tuple[pd.DataFrame, str | None]:
     """
-    Recent Congress trades from both chambers, newest disclosures first.
-    Returns (trades_in_window, newest_disclosure_in_full_dataset) so the
-    UI can distinguish 'feed failed' from 'dataset has nothing recent'.
+    Recent Congress trades, newest disclosures first.
+    Returns (trades_in_window, newest_disclosure_seen) so the UI can
+    distinguish 'feed failed' from 'nothing recent'.
     (empty DataFrame, None) on total failure.
     """
+    cutoff = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     frames = []
-    for url, chamber in ((HOUSE_URL, "House"), (SENATE_URL, "Senate")):
+    for page in range(1, max_pages + 1):
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=45)
+            resp = requests.get(
+                CAPITOLTRADES_URL,
+                params={"page": page, "pageSize": 96},
+                headers=HEADERS,
+                timeout=30,
+            )
             resp.raise_for_status()
-            frames.append(normalize_congress_rows(resp.json(), chamber))
+            batch = resp.json().get("data", [])
         except Exception as e:
-            print(f"Congress trades fetch error ({chamber}): {e}")
+            print(f"CapitolTrades fetch error (page {page}): {e}")
+            break
+
+        if not batch:
+            break
+        df = normalize_capitoltrades_rows(batch)
+        frames.append(df)
+
+        # Feed is newest-first: stop paging once past the window
+        page_dates = [v for v in df["disclosure_date"].tolist() if isinstance(v, str)] if not df.empty else []
+        if page_dates and max(page_dates) < cutoff:
+            break
 
     frames = [f for f in frames if not f.empty]
     if not frames:

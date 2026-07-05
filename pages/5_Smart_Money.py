@@ -97,7 +97,7 @@ with tab_congress:
 
         st.caption(
             f"{len(trades)} trades · newest disclosures first · politicians may report up to 45 days late · "
-            f"data: official STOCK Act filings via Stock Watcher"
+            f"data: official STOCK Act filings via CapitolTrades"
         )
 
         for i, row in trades.head(60).iterrows():
@@ -122,7 +122,7 @@ with tab_congress:
                     </div>
                     <div class="feed-right">
                         <div class="feed-amount">{row['amount'] or '—'}</div>
-                        <div class="feed-meta">reported range</div>
+                        <div class="feed-meta">est. value</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
