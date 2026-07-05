@@ -67,7 +67,7 @@ if quote.get("price"):
     </div>""", unsafe_allow_html=True)
     s3.markdown(f"""<div class="stat-box">
         <div class="stat-label">52-week range</div>
-        <div class="stat-value" style="font-size:1.05rem;">${quote.get('fifty_two_low', 0):.2f} – ${quote.get('fifty_two_high', 0):.2f}</div>
+        <div class="stat-value" style="font-size:1.05rem;">${(quote.get('fifty_two_low') or 0):.2f} – ${(quote.get('fifty_two_high') or 0):.2f}</div>
     </div>""", unsafe_allow_html=True)
     s4.markdown(f"""<div class="stat-box">
         <div class="stat-label">Volume</div>
@@ -124,12 +124,22 @@ st.markdown('<div class="feed-section">🏛️ Federal Government Money</div>', 
 st.markdown('<div class="feed-section-sub">Recent federal contracts matched to this company</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _sec_map():
+    return load_sec_company_map()
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _name_index():
-    return build_name_index(load_sec_company_map())
+    return build_name_index(_sec_map())
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _awards_pool(days):
+    # One shared pull for all tickers — not one 1000-row fetch per ticker
+    from src.data.gov_contracts import fetch_recent_awards
+    return fetch_recent_awards(days_back=days, limit=1000, min_amount=1_000_000)
 
 @st.cache_data(ttl=21600)
 def _fed(t, days):
-    return fed_dollar_summary(t, _name_index(), days_back=days)
+    return fed_dollar_summary(t, _name_index(), days_back=days, awards=_awards_pool(days))
 
 fed_period_col, _ = st.columns([1, 3])
 with fed_period_col:
@@ -211,7 +221,7 @@ st.markdown('<div class="feed-section-sub">Officers &amp; directors buying with 
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _insider(t):
-    cik = ticker_to_cik(t, load_sec_company_map())
+    cik = ticker_to_cik(t, _sec_map())
     if cik is None:
         return None
     return insider_buys_for_cik(cik, days_back=90)

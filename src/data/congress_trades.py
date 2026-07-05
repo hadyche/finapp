@@ -87,10 +87,12 @@ def normalize_congress_rows(rows: list[dict], chamber: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def fetch_congress_trades(days_back: int = 90) -> pd.DataFrame:
+def fetch_congress_trades(days_back: int = 90) -> tuple[pd.DataFrame, str | None]:
     """
     Recent Congress trades from both chambers, newest disclosures first.
-    Empty DataFrame on total failure — callers surface the error.
+    Returns (trades_in_window, newest_disclosure_in_full_dataset) so the
+    UI can distinguish 'feed failed' from 'dataset has nothing recent'.
+    (empty DataFrame, None) on total failure.
     """
     frames = []
     for url, chamber in ((HOUSE_URL, "House"), (SENATE_URL, "Senate")):
@@ -103,12 +105,16 @@ def fetch_congress_trades(days_back: int = 90) -> pd.DataFrame:
 
     frames = [f for f in frames if not f.empty]
     if not frames:
-        return pd.DataFrame()
+        return pd.DataFrame(), None
 
     df = pd.concat(frames, ignore_index=True)
+    latest = df["disclosure_date"].dropna().max()
     cutoff = (datetime.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     df = df[df["disclosure_date"].notna() & (df["disclosure_date"] >= cutoff)]
-    return df.sort_values("disclosure_date", ascending=False).reset_index(drop=True)
+    return (
+        df.sort_values("disclosure_date", ascending=False).reset_index(drop=True),
+        latest,
+    )
 
 
 def top_purchased_tickers(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:

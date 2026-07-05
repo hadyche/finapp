@@ -112,6 +112,17 @@ def test_empty_and_all_unmatched():
     assert build_contract_signals(unmatched_only, CAPS).empty
 
 
+def test_missing_agency_and_date_render_empty_not_none():
+    awards = pd.DataFrame([{
+        "ticker": "MRCY", "matched_name": "Mercury Systems Inc", "confidence": "exact",
+        "recipient": "MERCURY SYSTEMS INC", "amount": 84_000_000,
+        "agency": None, "date": None, "award_id": "N1",
+    }])
+    out = build_contract_signals(awards, CAPS)
+    assert out.iloc[0]["agency"] == ""   # never the string "None"
+    assert out.iloc[0]["date"] == ""
+
+
 def test_rank_signals_merges_and_sorts():
     a = build_contract_signals(_awards(), CAPS)
     merged = rank_signals(a, pd.DataFrame(), None)

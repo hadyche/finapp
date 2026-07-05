@@ -94,7 +94,7 @@ def get_market_stats(tickers: list[str]) -> dict[str, dict]:
             fi = batch.tickers[t.upper()].fast_info
             cap = _fast_info_value(fi, "marketCap", "market_cap")
             price = _fast_info_value(fi, "lastPrice", "last_price")
-            avg_vol = _fast_info_value(fi, "threeMonthAverageVolume", "three_month_average_daily_volume") \
+            avg_vol = _fast_info_value(fi, "threeMonthAverageVolume", "three_month_average_volume") \
                 or _fast_info_value(fi, "tenDayAverageVolume", "ten_day_average_volume")
             if price and avg_vol:
                 adv_usd = price * avg_vol

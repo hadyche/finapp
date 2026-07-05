@@ -33,7 +33,8 @@ def fmt_date(date_str: str) -> str:
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _congress(days: int):
-    return fetch_congress_trades(days_back=days), datetime.now().isoformat()
+    trades, latest = fetch_congress_trades(days_back=days)
+    return trades, latest, datetime.now().isoformat()
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _insider_buys(days: int):
@@ -64,12 +65,19 @@ with tab_congress:
         )
 
     with st.spinner("Loading STOCK Act disclosures…"):
-        trades, fetched_at = _congress(cg_days)
+        trades, latest_disclosure, fetched_at = _congress(cg_days)
 
-    if trades.empty:
+    if trades.empty and latest_disclosure is None:
         st.error(
             "Congress disclosure data is unavailable right now. No fake fallbacks — "
             "try again in a few minutes.",
+            icon="🏛️",
+        )
+    elif trades.empty:
+        st.info(
+            f"No disclosures in the last {cg_days} days. The newest disclosure in the "
+            f"dataset is from {latest_disclosure} — the community mirror may be lagging "
+            "behind the official filings.",
             icon="🏛️",
         )
     else:
