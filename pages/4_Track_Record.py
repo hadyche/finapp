@@ -109,8 +109,8 @@ else:
     st.dataframe(show, hide_index=True, use_container_width=True)
 
 st.markdown("""
-<div style="background: rgba(255,183,77,0.06); border: 1px solid rgba(255,183,77,0.25);
-border-radius: 10px; padding: 14px 18px; margin-top: 20px; color: #FFCC80; font-size: 0.82rem;">
+<div style="background: rgba(180,83,9,0.08); border: 1px solid rgba(180,83,9,0.3);
+border-radius: 10px; padding: 14px 18px; margin-top: 20px; color: #92400E; font-size: 0.82rem;">
 <strong>Being honest with you:</strong> this report card is young, the number of picks
 is small, and short time windows are noisy. It exists so YOU can see whether this
 idea actually works — not to promise it does. A bad report card is useful

@@ -106,7 +106,7 @@ if not hist.empty:
         name="Price"
     ))
     fig.update_layout(
-        template="plotly_dark",
+        template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         height=400, margin=dict(t=10, b=30, l=10, r=10),
         yaxis_title=None, xaxis_title=None,

@@ -74,8 +74,8 @@ Found a bug or have a feature request? Reach out on GitHub.
 """)
 
 st.markdown("""
-<div style="background: rgba(255,82,82,0.06); border: 1px solid rgba(255,82,82,0.2);
-border-radius: 10px; padding: 14px 18px; margin-top: 24px; color: #FCA5A5; font-size: 0.82rem;">
+<div style="background: rgba(220,38,38,0.06); border: 1px solid rgba(220,38,38,0.3);
+border-radius: 10px; padding: 14px 18px; margin-top: 24px; color: #991B1B; font-size: 0.82rem;">
 <strong>⚠️ The important warning (please actually read this):</strong> FlowSignal shows you
 interesting public information — it does NOT tell you what to buy. We are not financial
 advisors. Small companies' stocks can drop fast and hard, and past results don't promise
