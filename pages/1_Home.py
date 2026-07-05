@@ -1,15 +1,16 @@
-"""Home — the Signals feed: asymmetric events on small companies."""
+"""Home — small companies that just won big government money."""
 import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from datetime import datetime
 from src.ui.theme import inject_css, disclaimer
+from src.ui.components import info_popover, glossary_popover
 from src.data.gov_contracts import fetch_recent_awards, match_awards_to_tickers
 from src.data.ticker_map import load_sec_company_map, build_name_index, ticker_to_cik
 from src.data.stock_detail import get_market_stats, get_price_changes_since
 from src.data.insider_trades import insider_buys_for_cik
-from src.analysis.asymmetry import build_contract_signals, format_asymmetry_line
+from src.analysis.asymmetry import build_contract_signals
 
 inject_css()
 
@@ -72,20 +73,28 @@ def fmt_date(date_str: str) -> str:
         delta = (datetime.now() - d).days
         if delta <= 0: return "today"
         if delta == 1: return "yesterday"
-        if delta < 7: return f"{delta}d ago"
-        if delta < 30: return f"{delta//7}w ago"
-        return f"{delta//30}mo ago"
+        if delta < 7: return f"{delta} days ago"
+        if delta < 30: return f"{delta//7} weeks ago"
+        return f"{delta//30} months ago"
     except Exception:
         return ""
 
 
 def fmt_cap(cap: float) -> str:
     if cap >= 1e9:
-        return f"${cap/1e9:.1f}B company"
-    return f"${cap/1e6:.0f}M company"
+        return f"worth ${cap/1e9:.1f} billion"
+    return f"worth ${cap/1e6:.0f} million"
 
 
-# ── Header (freshness shown in the feed caption — no fake LIVE dot) ──────────
+def fmt_money(v: float) -> str:
+    if v >= 1e9:
+        return f"${v/1e9:.1f} billion"
+    if v >= 1e6:
+        return f"${v/1e6:.0f} million"
+    return f"${v/1e3:.0f}K"
+
+
+# ── Header ────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div style="margin-bottom:6px;">
     <div class="app-brand">Flow<span class="app-brand-accent">Signal</span></div>
@@ -93,36 +102,55 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="feed-section">Asymmetric Signals</div>', unsafe_allow_html=True)
+st.markdown('<div class="feed-section">💰 Small Companies That Just Won Big</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="feed-section-sub">Small companies that just landed federal money '
-    'that is HUGE relative to their size. No S&amp;P 500 names — ever.</div>',
+    '<div class="feed-section-sub">The U.S. government just gave these small companies '
+    'a LOT of money. That\'s real income — and the stock price may not have caught up yet.</div>',
     unsafe_allow_html=True,
 )
 
-# ── Filters ───────────────────────────────────────────────────────────────────
+hcol1, hcol2 = st.columns([1, 1])
+with hcol1:
+    info_popover("How does this work?", """
+**In 3 steps:**
+
+1. Every time the U.S. government pays a company to do work, it's posted publicly online. We read all of it, every day.
+2. We skip the giant companies — a big deal means nothing to them.
+3. We show you **small companies** where the deal is **huge compared to the company's size**.
+
+**Example:** imagine a lemonade stand worth $100 suddenly gets a $25 order.
+That one order = 25% of what the whole stand is worth. That's the kind of
+mismatch we look for — just with real companies and millions of dollars.
+""")
+with hcol2:
+    glossary_popover()
+
+# ── Filters (plain-language labels) ───────────────────────────────────────────
 settings = st.session_state.get("settings", {})
 f1, f2, f3 = st.columns(3)
 with f1:
     days = st.selectbox(
-        "Period", [7, 14, 30, 60, 90],
+        "How far back to look",
+        [7, 14, 30, 60, 90],
         index=2,
         format_func=lambda x: f"Last {x} days",
-        label_visibility="collapsed",
+        help="We only show deals signed in this time window.",
     )
 with f2:
     min_ratio_pct = st.selectbox(
-        "Min impact", [1, 2, 5, 10, 25],
+        "How big the deal must be",
+        [1, 2, 5, 10, 25],
         index=[1, 2, 5, 10, 25].index(int(settings.get("min_ratio_pct", 1))),
-        format_func=lambda x: f"≥ {x}% of mkt cap",
-        label_visibility="collapsed",
+        format_func=lambda x: f"At least {x}% of company's value",
+        help="A deal worth 25% of the whole company is a much bigger event than one worth 1%.",
     )
 with f3:
     max_cap_b = st.selectbox(
-        "Max size", [0.5, 1.0, 2.0, 5.0],
+        "Biggest company to show",
+        [0.5, 1.0, 2.0, 5.0],
         index=[0.5, 1.0, 2.0, 5.0].index(float(settings.get("max_cap_b", 5.0))),
-        format_func=lambda x: f"Cap < ${x:g}B",
-        label_visibility="collapsed",
+        format_func=lambda x: f"Under ${x:g} billion",
+        help="Smaller companies move more on big news. Even the $5B setting is below every famous stock you've heard of.",
     )
 
 registry_ok = bool(_name_index().get("exact"))
@@ -130,15 +158,15 @@ if not registry_ok:
     # Clear so the next rerun retries the download instead of caching failure
     _sec_map.clear()
     _name_index.clear()
-    st.warning("SEC company registry is unreachable — company matching is paused. Refresh in a minute.", icon="🗂️")
+    st.warning("We can't reach the company name list right now. Refresh in a minute.", icon="🗂️")
 
-with st.spinner("Scanning federal awards…"):
+with st.spinner("Reading government deals…"):
     matched, scanned_at = _matched_awards(days, registry_ok)
 
 if matched is None or matched.empty:
     st.error(
-        "USAspending.gov didn't return data. This is a live-data app with no fake "
-        "fallbacks — try refreshing in a minute.",
+        "The government website isn't answering right now. We never show fake "
+        "numbers — please try again in a minute.",
         icon="🏛️",
     )
 else:
@@ -154,49 +182,52 @@ else:
     )
 
     if signals.empty:
-        st.caption(f"scanned {len(matched)} awards · {fmt_ago(scanned_at)}")
+        st.caption(f"checked {len(matched)} deals · {fmt_ago(scanned_at)}")
         st.markdown(
-            '<div class="empty-state">No asymmetric events found in the last '
-            f'{days} days at these thresholds.<br>Try a longer period or lower '
-            'the impact filter — big mismatches are rare by design.</div>',
+            '<div class="empty-state">Nothing big enough in the last '
+            f'{days} days with these filters.<br>Try looking further back or '
+            'lowering "how big the deal must be" — truly huge wins are rare, '
+            'and that\'s what makes them special.</div>',
             unsafe_allow_html=True,
         )
     else:
-        with st.spinner("Checking price reaction & insider buying…"):
+        with st.spinner("Checking prices and what the bosses are doing…"):
             pairs = tuple((r["ticker"], str(r["date"])[:10]) for _, r in signals.iterrows() if r["date"])
             changes = _price_changes(pairs)
             insider_map = {t: _insiders(t) for t in signals["ticker"].head(12)}
 
         st.caption(
-            f"{len(signals)} signals · scanned {len(matched)} awards · {fmt_ago(scanned_at)} · "
-            f"prices refresh every 6h, insider data every 24h"
+            f"{len(signals)} stocks found · checked {len(matched)} government deals · updated {fmt_ago(scanned_at)}"
         )
 
         for i, row in signals.iterrows():
             ticker = row["ticker"]
             ratio_pct = row["impact_ratio"] * 100
-            line = format_asymmetry_line(row)
+            n = int(row.get("n_awards", 1))
+            deal_word = "deals worth" if n > 1 else "a deal worth"
+            line = (f"Won {deal_word} {fmt_money(row['total_awarded'])} — "
+                    f"that's {ratio_pct:.0f}% of what the whole company is worth")
             meta = f"{fmt_cap(row['market_cap'])} · {str(row['agency'])[:32]}"
             if row["date"]:
                 meta += f" · signed {fmt_date(row['date'])}"
 
-            # Context tags: are you late? can you trade it? are insiders in?
+            # Simple answers to: am I late? can I trade it? are bosses buying?
             tags = []
             chg = changes.get(ticker)
             if chg is not None:
                 if chg >= 25:
-                    tags.append(f'<span class="pill pill-red">already moved +{chg:.0f}% since award</span>')
+                    tags.append(f'<span class="pill pill-red">already jumped +{chg:.0f}% — you may be late</span>')
                 elif chg >= 0:
-                    tags.append(f'<span class="pill pill-green">+{chg:.1f}% since award</span>')
+                    tags.append(f'<span class="pill pill-green">up {chg:.1f}% since the deal</span>')
                 else:
-                    tags.append(f'<span class="pill pill-gray">{chg:.1f}% since award</span>')
+                    tags.append(f'<span class="pill pill-gray">down {abs(chg):.1f}% since the deal</span>')
             adv = stats.get(ticker, {}).get("adv_usd")
             if adv is not None and adv < THIN_VOLUME_USD:
-                tags.append('<span class="pill pill-red">⚠ thin volume</span>')
+                tags.append('<span class="pill pill-red">⚠ hard to trade</span>')
             ins = insider_map.get(ticker)
             if ins and ins["n_insiders"] >= 1:
-                who = f"{ins['n_insiders']} insider{'s' if ins['n_insiders'] > 1 else ''}"
-                tags.append(f'<span class="pill pill-green">🔥 {who} bought ${ins["total_usd"]/1e3:,.0f}K</span>')
+                who = f"{ins['n_insiders']} boss{'es' if ins['n_insiders'] > 1 else ''}"
+                tags.append(f'<span class="pill pill-green">🔥 {who} bought their own stock</span>')
             tags_html = f'<div style="margin:2px 0 12px 56px;">{" ".join(tags)}</div>' if tags else ""
 
             col1, col2 = st.columns([10, 1])
@@ -213,42 +244,40 @@ else:
                     </div>
                     <div class="feed-right">
                         <div class="feed-amount feed-amount-green">+{ratio_pct:.0f}%</div>
-                        <div class="feed-meta">of mkt cap</div>
+                        <div class="feed-meta">of company value</div>
                     </div>
                 </div>
                 <div style="color:#D1D5DB; font-size:0.85rem; margin:-6px 0 6px 56px;">{line}</div>
                 {tags_html}
                 """, unsafe_allow_html=True)
             with col2:
-                st.button("→", key=f"sig_{i}_{ticker}", on_click=go_to_detail, args=(ticker,))
+                st.button("→", key=f"sig_{i}_{ticker}", on_click=go_to_detail, args=(ticker,),
+                          help="See everything about this stock")
 
         # Transparency: what got scanned but not matched to a public company
         unmatched = matched[matched["ticker"].isna()]["recipient"].dropna().unique()
         if len(unmatched):
-            with st.expander(f"🔍 {len(unmatched)} recipients had no public-company match (private companies, subsidiaries, universities)"):
+            with st.expander(f"🔍 {len(unmatched)} winners we couldn't show (they're private companies or universities — you can't buy their stock)"):
                 st.caption(" · ".join(sorted(set(str(u)[:40] for u in unmatched))[:60]))
 
 
-with st.expander("💡 How FlowSignal finds hidden gems"):
+with st.expander("💡 Why small companies? (30-second read)"):
     st.markdown("""
-**The idea: size mismatch = opportunity.**
+A $100 million government deal means **nothing** to a giant like Apple —
+it's pocket change to them.
 
-An $84M contract means nothing to Lockheed Martin. But to a $380M company,
-it's 22% of everything the company is worth — real revenue that can move the stock.
+But give that same deal to a company worth $400 million, and it equals
+**a quarter of everything the company is worth**. That's the kind of news
+that can move a stock.
 
-**How the feed works:**
-1. We scan federal contracts **newly signed** in your time window on USAspending.gov — modifications to old contracts don't count
-2. Each recipient is matched against the SEC registry of all ~10,000 public companies
-3. We look up the company's market cap and compute **award ÷ company size**
-4. Only companies under your size ceiling with a material award make the feed
+**What the little tags mean:**
+- 🟢 **up X% since the deal** — the stock rose a little. The news may not be fully "priced in" yet.
+- 🔴 **already jumped X%** — the stock shot up already. Buying now means you're late to the party.
+- ⚠ **hard to trade** — very few people trade this stock daily, so it's tricky to buy and sell.
+- 🔥 **bosses bought their own stock** — the company's own executives spent personal money on it. They know the company best.
 
-**Reading the tags:**
-- **+x% since award** — how much the stock already moved after the contract was signed. Small = the market may not have noticed yet. Big red = you're probably late.
-- **⚠ thin volume** — trades under $1M/day on average; hard to buy or sell without moving the price.
-- **🔥 insiders bought** — company officers/directors purchased shares on the open market in the last 90 days (SEC Form 4). Insiders buying after a big award is the strongest combination this app can show you.
-
-**Why you won't see famous stocks:** the size ceiling ($5B max) is below the
-smallest company in the S&P 500. Everything here is under the radar by construction.
-    """)
+**One honest warning:** none of this is a guarantee. Small stocks can drop fast.
+Check the 📜 Report Card page to see how past picks actually did.
+""")
 
 disclaimer()

@@ -10,7 +10,10 @@ from src.data.insider_leaderboard import fetch_top_insider_buys
 from src.data.stock_detail import get_market_stats
 
 inject_css()
-page_header("🎩 Smart Money", "What people with information advantages are buying — updated daily")
+page_header("🎩 Smart Money", "Politicians and company bosses have to tell the public when they trade stocks. Here's what they've been buying.")
+
+from src.ui.components import glossary_popover
+glossary_popover()
 
 
 def go_to_detail(ticker: str):
@@ -51,7 +54,7 @@ def _caps(tickers: tuple):
     return get_market_stats(list(tickers))
 
 
-tab_congress, tab_insiders = st.tabs(["🏛️ Congress Trades", "👤 Biggest Insider Buys"])
+tab_congress, tab_insiders = st.tabs(["🏛️ What Senators Are Trading", "👤 Bosses Buying Their Own Stock"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — CONGRESS
@@ -65,15 +68,15 @@ with tab_congress:
             label_visibility="collapsed", key="cg_days",
         )
     with c2:
-        st.caption("Senate only for now — House files PDFs, support coming")
+        st.caption("Senators only for now — House members file paper forms we can't read yet")
 
     with st.spinner("Loading STOCK Act disclosures…"):
         trades, latest_disclosure, error_detail, fetched_at = _congress(cg_days)
 
     if trades.empty and latest_disclosure is None:
         st.error(
-            "Congress disclosure data is unavailable right now. No fake fallbacks — "
-            "try again in a few minutes.",
+            "The Senate's website isn't answering right now. We never show fake "
+            "numbers — please try again in a minute.",
             icon="🏛️",
         )
         if error_detail:
@@ -83,9 +86,9 @@ with tab_congress:
         _congress.clear()
     elif trades.empty:
         st.info(
-            f"No stock trades parsed from filings in the last {cg_days} days "
-            f"(newest filing: {latest_disclosure}). Senators file in bursts — "
-            "try a wider window.",
+            f"No senator reported stock trades in the last {cg_days} days "
+            f"(the newest report is from {latest_disclosure}). They report in "
+            "bursts — try looking further back.",
             icon="🏛️",
         )
     else:
@@ -95,17 +98,17 @@ with tab_congress:
                 f'<span class="source-chip">{r.ticker} · {r.politicians} member{"s" if r.politicians > 1 else ""}</span>'
                 for r in top.itertuples()
             )
-            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Most bought across the Senate</div>', unsafe_allow_html=True)
+            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Stocks the most senators are buying</div>', unsafe_allow_html=True)
             st.markdown(f"<div>{chips}</div>", unsafe_allow_html=True)
 
         st.caption(
-            f"{len(trades)} trades · newest disclosures first · senators may report up to 45 days late · "
-            f"data: official Senate eFD filings (efdsearch.senate.gov)"
+            f"{len(trades)} trades · newest first · heads up: senators are allowed to report up to 45 days late · "
+            f"straight from the official Senate records"
         )
 
         for i, row in trades.head(60).iterrows():
-            action = row["action"]
-            pill = {"BUY": "pill-green", "SELL": "pill-red"}.get(action, "pill-gray")
+            action = {"BUY": "BOUGHT", "SELL": "SOLD"}.get(row["action"], row["action"])
+            pill = {"BOUGHT": "pill-green", "SOLD": "pill-red"}.get(action, "pill-gray")
             traded = fmt_date(row["transaction_date"]) if row["transaction_date"] else "—"
             disclosed = fmt_date(row["disclosure_date"]) if row["disclosure_date"] else "—"
 
@@ -119,13 +122,13 @@ with tab_congress:
                             <div class="feed-ticker">{row['ticker']}
                                 <span class="pill {pill}" style="margin-left:8px;">{action}</span>
                             </div>
-                            <div class="feed-company">{row['politician']} · {row['chamber']}</div>
-                            <div class="feed-meta" style="margin-top:3px;">traded {traded} · disclosed {disclosed}</div>
+                            <div class="feed-company">Senator {row['politician']}</div>
+                            <div class="feed-meta" style="margin-top:3px;">traded {traded} · told the public {disclosed}</div>
                         </div>
                     </div>
                     <div class="feed-right">
                         <div class="feed-amount" style="font-size:0.85rem;">{row['amount'] or '—'}</div>
-                        <div class="feed-meta">reported range</div>
+                        <div class="feed-meta">how much (range)</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -137,18 +140,18 @@ with tab_congress:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_insiders:
     in_days = st.selectbox(
-        "Window", [3, 7, 14, 30], index=1,
-        format_func=lambda x: f"Filed in last {x} days",
-        label_visibility="collapsed", key="in_days",
+        "How far back to look", [3, 7, 14, 30], index=1,
+        format_func=lambda x: f"Last {x} days",
+        key="in_days",
     )
 
-    with st.spinner("Ranking the biggest insider buys…"):
+    with st.spinner("Finding the biggest boss buys…"):
         buys, fetched_at = _insider_buys(in_days)
 
     if buys.empty:
         st.error(
-            "Insider filing data is unavailable right now. No fake fallbacks — "
-            "try again in a few minutes.",
+            "The insider-buying data isn't answering right now. We never show fake "
+            "numbers — please try again in a minute.",
             icon="👤",
         )
         _insider_buys.clear()  # don't trap the failure in the 24h cache
@@ -157,15 +160,15 @@ with tab_insiders:
         stats = _caps(tuple(sorted(shown["ticker"].unique())))
 
         st.caption(
-            f"Top {len(shown)} open-market purchases (SEC Form 4, code P) · "
-            f"executives buying with their own money · data via OpenInsider"
+            f"The {len(shown)} biggest buys by company bosses, using their own money · "
+            f"from official SEC filings · 💎 = small company (the kind we like)"
         )
 
         for i, row in shown.iterrows():
             cap = (stats.get(row["ticker"]) or {}).get("cap")
             gem = cap is not None and cap < 5e9
-            cap_txt = f"${cap/1e9:.1f}B cap" if cap and cap >= 1e9 else (f"${cap/1e6:.0f}M cap" if cap else "cap unknown")
-            gem_tag = ' <span class="pill pill-green">hidden-gem size</span>' if gem else ""
+            cap_txt = f"company worth ${cap/1e9:.1f}B" if cap and cap >= 1e9 else (f"company worth ${cap/1e6:.0f}M" if cap else "company size unknown")
+            gem_tag = ' <span class="pill pill-green">💎 small company</span>' if gem else ""
             title = str(row["title"] or "").strip()
 
             col1, col2 = st.columns([10, 1])
@@ -190,23 +193,21 @@ with tab_insiders:
                 st.button("→", key=f"in_{i}", on_click=go_to_detail, args=(row["ticker"],))
 
 
-with st.expander("💡 Why follow this money?"):
+with st.expander("💡 Why watch these people? (30-second read)"):
     st.markdown("""
-**🏛️ Congress** — Senators must disclose their stock trades under the STOCK Act,
-and we read those filings straight from the official Senate disclosure site.
-Studies have repeatedly found congressional portfolios outperform the market.
-They can disclose up to 45 days after trading, so you're seeing what they *did*,
-not what they're doing today — the "disclosed" date shows exactly how stale each
-trade is. (House members file PDFs; House coverage is on the roadmap.)
+**🏛️ Senators** — By law, U.S. senators must tell the public every time they buy
+or sell a stock. We read those reports straight from the official Senate website.
+History shows politicians' stock picks often do surprisingly well. One catch:
+they're allowed to wait up to 45 days before telling anyone — so always look at
+the "told the public" date to see how old the news is.
 
-**👤 Insiders** — Officers and directors buying their own company's stock on the
-open market (SEC Form 4, code P) are betting their personal money on the business
-they know best. Sales are routine (taxes, diversification) and carry no signal —
-that's why this board only shows **buys**. The green **hidden-gem size** tag marks
-companies under $5B, where insider conviction moves the needle most.
+**👤 Company bosses** — When a CEO spends their *own* money on their *own*
+company's stock, that means something. They know the company better than anyone.
+(Bosses *selling* is normal — everyone needs cash sometimes — so we only show
+the buying.) The 💎 tag marks small companies, where a boss's confidence matters most.
 
-Both boards refresh daily. This is public information published with a delay —
-never inside information.
+Everything here is public information, straight from official government records.
+It refreshes once a day.
     """)
 
 disclaimer()
