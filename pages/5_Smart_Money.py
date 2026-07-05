@@ -133,7 +133,9 @@ with tab_congress:
                 </div>
                 """, unsafe_allow_html=True)
             with col2:
-                st.button("→", key=f"cg_{i}", on_click=go_to_detail, args=(row["ticker"],))
+                # switch_page is a no-op inside on_click callbacks
+                if st.button("→", key=f"cg_{i}", help="See everything about this stock"):
+                    go_to_detail(row["ticker"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INSIDER BUY LEADERBOARD
@@ -190,7 +192,9 @@ with tab_insiders:
                 </div>
                 """, unsafe_allow_html=True)
             with col2:
-                st.button("→", key=f"in_{i}", on_click=go_to_detail, args=(row["ticker"],))
+                # switch_page is a no-op inside on_click callbacks
+                if st.button("→", key=f"in_{i}", help="See everything about this stock"):
+                    go_to_detail(row["ticker"])
 
 
 with st.expander("💡 Why watch these people? (30-second read)"):

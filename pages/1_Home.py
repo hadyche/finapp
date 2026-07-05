@@ -251,8 +251,10 @@ else:
                 {tags_html}
                 """, unsafe_allow_html=True)
             with col2:
-                st.button("→", key=f"sig_{i}_{ticker}", on_click=go_to_detail, args=(ticker,),
-                          help="See everything about this stock")
+                # st.switch_page is a silent no-op inside on_click callbacks,
+                # so the click must be handled in the main script flow
+                if st.button("→", key=f"sig_{i}_{ticker}", help="See everything about this stock"):
+                    go_to_detail(ticker)
 
         # Transparency: what got scanned but not matched to a public company
         unmatched = matched[matched["ticker"].isna()]["recipient"].dropna().unique()
