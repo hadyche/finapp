@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pandas as pd
 from datetime import datetime
 from src.ui.theme import inject_css, page_header, disclaimer
-from src.data.gov_contracts import fetch_recent_awards, match_awards_to_tickers
+from src.data.gov_contracts import fetch_awards_wide, match_awards_to_tickers
 from src.data.ticker_map import load_sec_company_map, build_name_index
 from src.data.stock_detail import get_market_stats, get_price_changes_since, get_benchmark_changes
 from src.analysis.asymmetry import build_contract_signals
@@ -22,10 +22,7 @@ def _name_index():
 @st.cache_data(ttl=86400, show_spinner=False)
 def _past_signals(start_days: int, end_days: int):
     """Signals as they would have appeared for awards signed start–end days ago."""
-    awards = fetch_recent_awards(
-        days_back=start_days, end_days_back=end_days,
-        limit=500, min_amount=5_000_000,
-    )
+    awards = fetch_awards_wide(days_back=start_days, end_days_back=end_days)
     if awards.empty:
         return pd.DataFrame()
     matched = match_awards_to_tickers(awards, _name_index())
