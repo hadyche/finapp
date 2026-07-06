@@ -130,6 +130,63 @@ def change_since(closes: pd.Series, date_str: str) -> float | None:
         return None
 
 
+def change_over(closes: pd.Series, date_str: str, horizon_days: int) -> float | None:
+    """
+    % change from the first close on/after date_str to the first close
+    on/after date_str + horizon_days. None if the horizon end hasn't
+    happened yet. Pure logic — unit-testable.
+    """
+    try:
+        s = closes.dropna()
+        if s.empty:
+            return None
+        idx = s.index
+        if getattr(idx, "tz", None) is not None:
+            idx = idx.tz_localize(None)
+            s = pd.Series(s.values, index=idx)
+        start_t = pd.Timestamp(str(date_str)[:10])
+        end_t = start_t + pd.Timedelta(days=horizon_days)
+        after_start = s[s.index >= start_t]
+        after_end = s[s.index >= end_t]
+        if after_start.empty or after_end.empty:
+            return None
+        start = float(after_start.iloc[0])
+        end = float(after_end.iloc[0])
+        if start <= 0:
+            return None
+        return (end - start) / start * 100
+    except Exception:
+        return None
+
+
+def get_fundamental_context(tickers: list[str]) -> dict[str, dict]:
+    """
+    Revenue, short interest, and analyst coverage per ticker — one batch.
+    None values mean unknown; callers must never guess.
+    """
+    out: dict[str, dict] = {}
+    if not tickers:
+        return out
+    try:
+        batch = yf.Tickers(" ".join(tickers))
+    except Exception as e:
+        print(f"yfinance batch error: {e}")
+        return {t: {} for t in tickers}
+    for t in tickers:
+        ctx: dict = {}
+        try:
+            info = batch.tickers[t.upper()].info or {}
+            ctx = {
+                "revenue": info.get("totalRevenue"),
+                "short_pct_float": info.get("shortPercentOfFloat"),
+                "n_analysts": info.get("numberOfAnalystOpinions"),
+            }
+        except Exception:
+            pass
+        out[t] = ctx
+    return out
+
+
 def get_price_changes_since(pairs: list[tuple[str, str]]) -> dict[str, float | None]:
     """
     % price change since a date, per ticker, in ONE batched download.
@@ -153,6 +210,30 @@ def get_price_changes_since(pairs: list[tuple[str, str]]) -> dict[str, float | N
     for t, d in valid:
         try:
             out[t] = change_since(closes[t], d)
+        except Exception:
+            out[t] = None
+    return out
+
+
+def get_price_changes_over(pairs: list[tuple[str, str]], horizon_days: int) -> dict[str, float | None]:
+    """Fixed-horizon % change per ticker (batched like get_price_changes_since)."""
+    out: dict[str, float | None] = {}
+    valid = [(t, d) for t, d in pairs if t and str(d)[:10] >= "2000-01-01"]
+    if not valid:
+        return out
+    tickers = sorted({t for t, _ in valid})
+    start = min(str(d)[:10] for _, d in valid)
+    try:
+        data = yf.download(tickers, start=start, progress=False, auto_adjust=True)
+        closes = data["Close"]
+        if isinstance(closes, pd.Series):
+            closes = closes.to_frame(name=tickers[0])
+    except Exception as e:
+        print(f"yfinance download error: {e}")
+        return {t: None for t, _ in valid}
+    for t, d in valid:
+        try:
+            out[t] = change_over(closes[t], d, horizon_days)
         except Exception:
             out[t] = None
     return out

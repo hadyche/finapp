@@ -3,14 +3,16 @@ import streamlit as st
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.ui.theme import inject_css, disclaimer
 from src.ui.components import info_popover, glossary_popover
 from src.data.gov_contracts import fetch_awards_wide, match_awards_to_tickers
 from src.data.ticker_map import load_sec_company_map, build_name_index, ticker_to_cik
 from src.data.stock_detail import get_market_stats, get_price_changes_since
 from src.data.insider_trades import insider_buys_for_cik
-from src.analysis.asymmetry import build_contract_signals
+from src.data.congress_trades import fetch_congress_trades
+from src.analysis.asymmetry import build_contract_signals, score_signal_row
+from src.analysis.convergence import smart_money_tags, congress_buy_set
 
 inject_css()
 
@@ -51,10 +53,13 @@ def _insiders(ticker: str):
         return None
     return insider_buys_for_cik(cik, days_back=90)
 
-
-def go_to_detail(ticker: str):
-    st.session_state.selected_ticker = ticker
-    st.switch_page("pages/3_Stock_Detail.py")
+@st.cache_data(ttl=86400, show_spinner=False)
+def _congress_buys() -> set:
+    try:
+        trades, _latest, _err = fetch_congress_trades(days_back=90, max_reports=20)
+        return congress_buy_set(trades)
+    except Exception:
+        return set()
 
 
 def fmt_ago(iso: str) -> str:
@@ -63,6 +68,14 @@ def fmt_ago(iso: str) -> str:
         if mins < 2: return "just now"
         if mins < 60: return f"{mins}m ago"
         return f"{mins//60}h ago"
+    except Exception:
+        return ""
+
+
+def fmt_next_scan(iso: str) -> str:
+    try:
+        nxt = datetime.fromisoformat(iso) + timedelta(hours=6)
+        return nxt.strftime("%H:%M")
     except Exception:
         return ""
 
@@ -80,6 +93,14 @@ def fmt_date(date_str: str) -> str:
         return ""
 
 
+def days_since(date_str: str) -> float | None:
+    try:
+        d = datetime.strptime(str(date_str)[:10], "%Y-%m-%d")
+        return max((datetime.now() - d).days, 0)
+    except Exception:
+        return None
+
+
 def fmt_cap(cap: float) -> str:
     if cap >= 1e9:
         return f"worth ${cap/1e9:.1f} billion"
@@ -92,6 +113,17 @@ def fmt_money(v: float) -> str:
     if v >= 1e6:
         return f"${v/1e6:.0f} million"
     return f"${v/1e3:.0f}K"
+
+
+def change_pill(chg) -> str:
+    """The since-deal price reaction, colored by direction."""
+    if chg is None:
+        return '<span class="feed-meta">no price data</span>'
+    if chg >= 25:
+        return f'<span class="pill pill-red">already jumped +{chg:.0f}%</span>'
+    if chg >= 0:
+        return f'<div class="feed-amount" style="color:var(--accent-strong);">+{chg:.1f}%</div><div class="feed-meta">since the deal</div>'
+    return f'<div class="feed-amount" style="color:var(--down-strong);">−{abs(chg):.1f}%</div><div class="feed-meta">since the deal</div>'
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -116,11 +148,15 @@ with hcol1:
 
 1. Every time the U.S. government pays a company to do work, it's posted publicly online. We read all of it, every day.
 2. We skip the giant companies — a big deal means nothing to them.
-3. We show you **small companies** where the deal is **huge compared to the company's size**.
+3. We show you **small companies** where the deal is **huge compared to the company's size**, and we check whether **insiders and senators are buying too**.
 
 **Example:** imagine a lemonade stand worth $100 suddenly gets a $25 order.
 That one order = 25% of what the whole stand is worth. That's the kind of
 mismatch we look for — just with real companies and millions of dollars.
+
+**The Strength score (0–100)** adds it all up: how big the deal is, how fresh,
+whether the price already moved, how easy the stock is to trade, and whether
+smart money agrees.
 """)
 with hcol2:
     glossary_popover()
@@ -182,79 +218,111 @@ else:
     )
 
     if signals.empty:
-        st.caption(f"checked {len(matched)} deals · {fmt_ago(scanned_at)}")
+        st.caption(f"checked {len(matched)} deals · {fmt_ago(scanned_at)} · next scan ~{fmt_next_scan(scanned_at)}")
         st.markdown(
             '<div class="empty-state">Nothing big enough in the last '
-            f'{days} days with these filters.<br>Try looking further back or '
-            'lowering "how big the deal must be" — truly huge wins are rare, '
-            'and that\'s what makes them special.</div>',
+            f'{days} days with these filters — and we won\'t pretend otherwise.<br>'
+            'Deals this lopsided only show up a few times a week; that rarity is '
+            'exactly why they matter. Try a longer window, or come back tomorrow.</div>',
             unsafe_allow_html=True,
         )
     else:
-        with st.spinner("Checking prices and what the bosses are doing…"):
+        with st.spinner("Scoring each pick — price reaction, insiders, senators…"):
             pairs = tuple((r["ticker"], str(r["date"])[:10]) for _, r in signals.iterrows() if r["date"])
             changes = _price_changes(pairs)
-            insider_map = {t: _insiders(t) for t in signals["ticker"].head(12)}
+            insider_map = {t: _insiders(t) for t in signals["ticker"].head(8)}
+            senate_buys = _congress_buys()
+
+        # ── Signal Strength: one score that combines everything ──────────────
+        scored = []
+        for _, row in signals.iterrows():
+            t = row["ticker"]
+            conv = smart_money_tags(t, senate_buys, insider_map.get(t))
+            score, reasons = score_signal_row(
+                impact_ratio=row["impact_ratio"],
+                days_since_award=days_since(row["date"]),
+                pct_change_since=changes.get(t),
+                adv_usd=stats.get(t, {}).get("adv_usd"),
+                confidence=row["confidence"],
+                n_smart_signals=conv["n_signals"],
+            )
+            scored.append({"row": row, "score": score, "reasons": reasons, "conv": conv})
+        scored.sort(key=lambda x: x["score"], reverse=True)
 
         st.caption(
-            f"{len(signals)} stocks found · checked {len(matched)} government deals · updated {fmt_ago(scanned_at)}"
+            f"{len(scored)} picks · checked {len(matched)} government deals · updated {fmt_ago(scanned_at)} · "
+            f"next scan ~{fmt_next_scan(scanned_at)}"
         )
 
-        for i, row in signals.iterrows():
-            ticker = row["ticker"]
+        # ── Hero: the strongest pick today ────────────────────────────────────
+        top = scored[0]
+        trow, tconv = top["row"], top["conv"]
+        t = trow["ticker"]
+        chg = changes.get(t)
+        reasons_html = "".join(
+            f'<div class="hero-reason"><span class="check">✓</span>{r}</div>'
+            for r in (top["reasons"] + tconv["labels"])[:5]
+        )
+        chg_html = ""
+        if chg is not None:
+            sign = "+" if chg >= 0 else "−"
+            color = "var(--accent-strong)" if chg >= 0 else "var(--down-strong)"
+            chg_html = f'<span style="color:{color}; font-weight:700;">{sign}{abs(chg):.1f}% since the deal</span>'
+        st.markdown(f"""
+        <a class="feed-link" href="stock?t={t}" target="_self">
+        <div class="hero-card">
+            <div class="hero-label">⭐ Today's strongest pick · Strength {top['score']:.0f}/100</div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:4px;">
+                <div class="hero-ticker">{t} <span style="font-size:0.95rem; font-weight:500; color:var(--text-2);">{str(trow['matched_name'])[:40]}</span></div>
+                <div>{chg_html}</div>
+            </div>
+            <div class="feed-meta" style="margin:2px 0 10px 0;">{fmt_cap(trow['market_cap'])} · {str(trow['agency'])[:36]} · signed {fmt_date(trow['date'])}</div>
+            {reasons_html}
+            <div class="feed-meta" style="margin-top:10px;">Tap for the full picture →</div>
+        </div>
+        </a>
+        """, unsafe_allow_html=True)
+
+        # ── The rest of the feed ──────────────────────────────────────────────
+        for item in scored[1:]:
+            row, conv = item["row"], item["conv"]
+            t = row["ticker"]
             ratio_pct = row["impact_ratio"] * 100
-            n = int(row.get("n_awards", 1))
-            deal_word = "deals worth" if n > 1 else "a deal worth"
-            line = (f"Won {deal_word} {fmt_money(row['total_awarded'])} — "
-                    f"that's {ratio_pct:.0f}% of what the whole company is worth")
-            meta = f"{fmt_cap(row['market_cap'])} · {str(row['agency'])[:32]}"
+            chg = changes.get(t)
+            meta = f"{fmt_cap(row['market_cap'])} · {str(row['agency'])[:30]}"
             if row["date"]:
                 meta += f" · signed {fmt_date(row['date'])}"
 
-            # Simple answers to: am I late? can I trade it? are bosses buying?
-            tags = []
-            chg = changes.get(ticker)
-            if chg is not None:
-                if chg >= 25:
-                    tags.append(f'<span class="pill pill-red">already jumped +{chg:.0f}% — you may be late</span>')
-                elif chg >= 0:
-                    tags.append(f'<span class="pill pill-green">up {chg:.1f}% since the deal</span>')
-                else:
-                    tags.append(f'<span class="pill pill-gray">down {abs(chg):.1f}% since the deal</span>')
-            adv = stats.get(ticker, {}).get("adv_usd")
+            tags = [f'<span class="pill pill-gray">deal = {ratio_pct:.0f}% of the company</span>',
+                    f'<span class="pill pill-gray">Strength {item["score"]:.0f}</span>']
+            adv = stats.get(t, {}).get("adv_usd")
             if adv is not None and adv < THIN_VOLUME_USD:
                 tags.append('<span class="pill pill-red">⚠ hard to trade</span>')
-            ins = insider_map.get(ticker)
-            if ins and ins["n_insiders"] >= 1:
-                who = f"{ins['n_insiders']} boss{'es' if ins['n_insiders'] > 1 else ''}"
-                tags.append(f'<span class="pill pill-green">🔥 {who} bought their own stock</span>')
-            tags_html = f'<div style="margin:2px 0 12px 56px;">{" ".join(tags)}</div>' if tags else ""
+            for lbl in conv["labels"]:
+                tags.append(f'<span class="pill pill-green">{lbl}</span>')
 
-            col1, col2 = st.columns([10, 1])
-            with col1:
-                st.markdown(f"""
-                <div class="feed-row">
-                    <div class="feed-left">
-                        <div class="feed-icon">{ticker[:4]}</div>
-                        <div class="feed-text">
-                            <div class="feed-ticker">{ticker}</div>
-                            <div class="feed-company">{str(row['matched_name'])[:48]}</div>
-                            <div class="feed-meta" style="margin-top:3px;">{meta}</div>
-                        </div>
-                    </div>
-                    <div class="feed-right">
-                        <div class="feed-amount feed-amount-green">+{ratio_pct:.0f}%</div>
-                        <div class="feed-meta">of company value</div>
+            st.markdown(f"""
+            <a class="feed-link" href="stock?t={t}" target="_self">
+            <div class="feed-row">
+                <div class="feed-left">
+                    <div class="feed-icon">{t[:4]}</div>
+                    <div class="feed-text">
+                        <div class="feed-ticker">{t}</div>
+                        <div class="feed-company">{str(row['matched_name'])[:48]}</div>
+                        <div class="feed-meta" style="margin-top:3px;">{meta}</div>
                     </div>
                 </div>
-                <div style="color:var(--text-2); font-size:0.85rem; margin:-6px 0 6px 56px;">{line}</div>
-                {tags_html}
-                """, unsafe_allow_html=True)
-            with col2:
-                # st.switch_page is a silent no-op inside on_click callbacks,
-                # so the click must be handled in the main script flow
-                if st.button("→", key=f"sig_{i}_{ticker}", help="See everything about this stock"):
-                    go_to_detail(ticker)
+                <div class="feed-right">{change_pill(chg)}</div>
+            </div>
+            </a>
+            <div style="margin:-6px 0 12px 56px;">{' '.join(tags)}</div>
+            """, unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="feed-meta" style="margin-top:14px;">Small stocks can drop fast. '
+            'This is public information, not advice — check the 📜 Report Card to see how past picks did.</div>',
+            unsafe_allow_html=True,
+        )
 
         # Transparency: what got scanned but not matched to a public company
         unmatched = matched[matched["ticker"].isna()]["recipient"].dropna().unique()
@@ -272,11 +340,10 @@ But give that same deal to a company worth $400 million, and it equals
 **a quarter of everything the company is worth**. That's the kind of news
 that can move a stock.
 
-**What the little tags mean:**
-- 🟢 **up X% since the deal** — the stock rose a little. The news may not be fully "priced in" yet.
-- 🔴 **already jumped X%** — the stock shot up already. Buying now means you're late to the party.
-- ⚠ **hard to trade** — very few people trade this stock daily, so it's tricky to buy and sell.
-- 🔥 **bosses bought their own stock** — the company's own executives spent personal money on it. They know the company best.
+**What the Strength score means:** we add up how big the deal is compared to
+the company, how recently it was signed, whether the price already reacted,
+how easy the stock is to trade, and whether **insiders or senators are buying
+the same stock**. 100 = everything lines up. Most picks score 40–70.
 
 **One honest warning:** none of this is a guarantee. Small stocks can drop fast.
 Check the 📜 Report Card page to see how past picks actually did.

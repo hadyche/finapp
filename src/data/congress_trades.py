@@ -251,6 +251,43 @@ def recent_and_latest(df: pd.DataFrame, days_back: int) -> tuple[pd.DataFrame, s
     )
 
 
+def rank_congress_buys(df: pd.DataFrame, caps: dict | None = None, top_n: int = 10) -> pd.DataFrame:
+    """
+    Senators' highest-conviction buys: more senators, bigger reported
+    amounts, and small companies rank higher. Pure — unit-testable.
+    Returns [ticker, n_senators, max_amount_low, score] sorted desc.
+    """
+    if df is None or df.empty or "action" not in df.columns:
+        return pd.DataFrame()
+    buys = df[df["action"] == "BUY"].copy()
+    if buys.empty:
+        return pd.DataFrame()
+
+    caps = caps or {}
+    import math
+    rows = []
+    for ticker, grp in buys.groupby("ticker"):
+        n_senators = grp["politician"].nunique()
+        amounts = [a for a in grp["amount_low"].tolist() if a is not None and not pd.isna(a)]
+        max_amt = max(amounts) if amounts else 0.0
+        score = math.log10(max(max_amt, 1000)) + 2 * n_senators
+        cap = caps.get(str(ticker).upper())
+        if cap is not None and cap < 5e9:
+            score += 1
+        rows.append({
+            "ticker": ticker,
+            "n_senators": int(n_senators),
+            "max_amount_low": float(max_amt),
+            "score": round(score, 2),
+        })
+    return (
+        pd.DataFrame(rows)
+        .sort_values("score", ascending=False)
+        .head(top_n)
+        .reset_index(drop=True)
+    )
+
+
 def top_purchased_tickers(df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     """Tickers most bought across the Senate in the window."""
     if df is None or df.empty:

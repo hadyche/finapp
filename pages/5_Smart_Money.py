@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from datetime import datetime
 from src.ui.theme import inject_css, page_header, disclaimer
-from src.data.congress_trades import fetch_congress_trades, top_purchased_tickers
+from src.data.congress_trades import fetch_congress_trades, rank_congress_buys
 from src.data.insider_leaderboard import fetch_top_insider_buys
 from src.data.stock_detail import get_market_stats
 
@@ -14,11 +14,6 @@ page_header("🎩 Smart Money", "Politicians and company bosses have to tell the
 
 from src.ui.components import glossary_popover
 glossary_popover()
-
-
-def go_to_detail(ticker: str):
-    st.session_state.selected_ticker = ticker
-    st.switch_page("pages/3_Stock_Detail.py")
 
 
 def fmt_date(date_str: str) -> str:
@@ -95,13 +90,15 @@ with tab_congress:
             icon="🏛️",
         )
     else:
-        top = top_purchased_tickers(trades, top_n=8)
-        if not top.empty:
+        ranked = rank_congress_buys(trades, top_n=8)
+        if not ranked.empty:
             chips = "".join(
-                f'<span class="source-chip">{r.ticker} · {r.politicians} member{"s" if r.politicians > 1 else ""}</span>'
-                for r in top.itertuples()
+                f'<a class="feed-link" style="display:inline-block;" href="stock?t={r.ticker}" target="_self">'
+                f'<span class="source-chip">{r.ticker} · {r.n_senators} senator{"s" if r.n_senators > 1 else ""}'
+                f'{f" · up to ${r.max_amount_low/1e3:,.0f}K" if r.max_amount_low else ""}</span></a>'
+                for r in ranked.itertuples()
             )
-            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Stocks the most senators are buying</div>', unsafe_allow_html=True)
+            st.markdown('<div class="feed-section-sub" style="margin-top:8px;">Senators\' highest-conviction buys (more senators + bigger money = higher)</div>', unsafe_allow_html=True)
             st.markdown(f"<div>{chips}</div>", unsafe_allow_html=True)
 
         st.caption(
@@ -115,30 +112,26 @@ with tab_congress:
             traded = fmt_date(row["transaction_date"]) if row["transaction_date"] else "—"
             disclosed = fmt_date(row["disclosure_date"]) if row["disclosure_date"] else "—"
 
-            col1, col2 = st.columns([10, 1])
-            with col1:
-                st.markdown(f"""
-                <div class="feed-row">
-                    <div class="feed-left">
-                        <div class="feed-icon">{str(row['ticker'])[:4]}</div>
-                        <div class="feed-text">
-                            <div class="feed-ticker">{row['ticker']}
-                                <span class="pill {pill}" style="margin-left:8px;">{action}</span>
-                            </div>
-                            <div class="feed-company">Senator {row['politician']}</div>
-                            <div class="feed-meta" style="margin-top:3px;">traded {traded} · told the public {disclosed}</div>
+            st.markdown(f"""
+            <a class="feed-link" href="stock?t={row['ticker']}" target="_self">
+            <div class="feed-row">
+                <div class="feed-left">
+                    <div class="feed-icon">{str(row['ticker'])[:4]}</div>
+                    <div class="feed-text">
+                        <div class="feed-ticker">{row['ticker']}
+                            <span class="pill {pill}" style="margin-left:8px;">{action}</span>
                         </div>
-                    </div>
-                    <div class="feed-right">
-                        <div class="feed-amount" style="font-size:0.85rem;">{row['amount'] or '—'}</div>
-                        <div class="feed-meta">how much (range)</div>
+                        <div class="feed-company">Senator {row['politician']}</div>
+                        <div class="feed-meta" style="margin-top:3px;">traded {traded} · told the public {disclosed}</div>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
-            with col2:
-                # switch_page is a no-op inside on_click callbacks
-                if st.button("→", key=f"cg_{i}", help="See everything about this stock"):
-                    go_to_detail(row["ticker"])
+                <div class="feed-right">
+                    <div class="feed-amount" style="font-size:0.85rem;">{row['amount'] or '—'}</div>
+                    <div class="feed-meta">how much (range)</div>
+                </div>
+            </div>
+            </a>
+            """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — INSIDER BUY LEADERBOARD
@@ -179,28 +172,24 @@ with tab_insiders:
             gem_tag = ' <span class="pill pill-green">💎 small company</span>' if gem else ""
             title = str(row["title"] or "").strip()
 
-            col1, col2 = st.columns([10, 1])
-            with col1:
-                st.markdown(f"""
-                <div class="feed-row">
-                    <div class="feed-left">
-                        <div class="feed-icon">{str(row['ticker'])[:4]}</div>
-                        <div class="feed-text">
-                            <div class="feed-ticker">{row['ticker']}{gem_tag}</div>
-                            <div class="feed-company">{str(row['insider'])[:30]}{f" · {title[:22]}" if title else ""} · {str(row['company'])[:26]}</div>
-                            <div class="feed-meta" style="margin-top:3px;">{cap_txt} · filed {fmt_date(row['filing_date'])}</div>
-                        </div>
-                    </div>
-                    <div class="feed-right">
-                        <div class="feed-amount feed-amount-green">${row['value']/1e6:.2f}M</div>
-                        <div class="feed-meta">{f"{row['qty']:,.0f} sh @ ${row['price']:.2f}" if row['qty'] and row['price'] else "purchase"}</div>
+            st.markdown(f"""
+            <a class="feed-link" href="stock?t={row['ticker']}" target="_self">
+            <div class="feed-row">
+                <div class="feed-left">
+                    <div class="feed-icon">{str(row['ticker'])[:4]}</div>
+                    <div class="feed-text">
+                        <div class="feed-ticker">{row['ticker']}{gem_tag}</div>
+                        <div class="feed-company">{str(row['insider'])[:30]}{f" · {title[:22]}" if title else ""} · {str(row['company'])[:26]}</div>
+                        <div class="feed-meta" style="margin-top:3px;">{cap_txt} · filed {fmt_date(row['filing_date'])}</div>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
-            with col2:
-                # switch_page is a no-op inside on_click callbacks
-                if st.button("→", key=f"in_{i}", help="See everything about this stock"):
-                    go_to_detail(row["ticker"])
+                <div class="feed-right">
+                    <div class="feed-amount feed-amount-green">${row['value']/1e6:.2f}M</div>
+                    <div class="feed-meta">{f"{row['qty']:,.0f} sh @ ${row['price']:.2f}" if row['qty'] and row['price'] else "purchase"}</div>
+                </div>
+            </div>
+            </a>
+            """, unsafe_allow_html=True)
 
 
 with st.expander("💡 Why watch these people? (30-second read)"):
