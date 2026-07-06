@@ -47,7 +47,10 @@ def _congress(days: int):
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _insider_buys(days: int):
-    return fetch_top_insider_buys(days=days, min_value_k=100, limit=100), datetime.now().isoformat()
+    res = fetch_top_insider_buys(days=days, min_value_k=100, limit=100)
+    # Tolerate a stale hot-reloaded module returning just the DataFrame
+    buys, detail = res if isinstance(res, tuple) else (res, None)
+    return buys, detail, datetime.now().isoformat()
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def _caps(tickers: tuple):
@@ -148,7 +151,7 @@ with tab_insiders:
     )
 
     with st.spinner("Finding the biggest boss buys…"):
-        buys, fetched_at = _insider_buys(in_days)
+        buys, insider_detail, fetched_at = _insider_buys(in_days)
 
     if buys.empty:
         st.error(
@@ -156,6 +159,9 @@ with tab_insiders:
             "numbers — please try again in a minute.",
             icon="👤",
         )
+        if insider_detail:
+            with st.expander("🔧 Technical details"):
+                st.code(str(insider_detail))
         _insider_buys.clear()  # don't trap the failure in the 24h cache
     else:
         shown = buys.head(30)

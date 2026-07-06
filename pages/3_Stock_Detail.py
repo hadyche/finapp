@@ -4,7 +4,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import plotly.graph_objects as go
-from src.ui.theme import inject_css, page_header, disclaimer, ACCENT, ACCENT_FILL, CHART_GRID
+from src.ui.theme import inject_css, page_header, disclaimer, ACCENT, DOWN
 from src.ui.components import glossary_popover
 from src.data.favorites import is_favorite, toggle_favorite
 from src.data.stock_detail import get_price_history, get_quote, get_news
@@ -98,24 +98,60 @@ def _hist(t, tf): return get_price_history(t, tf)
 
 hist = _hist(ticker, st.session_state.chart_tf)
 if not hist.empty:
+    closes = hist["Close"].astype(float)
+    start_p, end_p = float(closes.iloc[0]), float(closes.iloc[-1])
+    chg = end_p - start_p
+    chg_pct = (chg / start_p * 100) if start_p else 0.0
+    up = chg >= 0
+    line_color = ACCENT if up else DOWN
+    fill_color = "rgba(0, 178, 93, 0.07)" if up else "rgba(229, 72, 77, 0.07)"
+    arrow = "▲" if up else "▼"
+    cls = "stat-delta-up" if up else "stat-delta-down"
+    st.markdown(
+        f'<div class="{cls}" style="font-size:0.95rem; margin:2px 0 0 2px;">'
+        f'{arrow} ${abs(chg):.2f} ({chg_pct:+.1f}%) over {st.session_state.chart_tf}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Robinhood-style: zoom the y-axis to the price action instead of $0,
+    # so a $6 stock's real movement isn't squashed into a flat line
+    ymin, ymax = float(closes.min()), float(closes.max())
+    pad = (ymax - ymin) * 0.08 or max(ymax * 0.01, 0.01)
+    baseline = ymin - pad
+
     fig = go.Figure()
+    # invisible floor trace so the soft fill hugs the visible range, not zero
     fig.add_trace(go.Scatter(
-        x=hist["date"], y=hist["Close"],
-        mode="lines", line=dict(color=ACCENT, width=2.5),
-        fill="tozeroy", fillcolor=ACCENT_FILL,
-        name="Price"
+        x=hist["date"], y=[baseline] * len(hist),
+        mode="lines", line=dict(width=0),
+        hoverinfo="skip", showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=hist["date"], y=closes,
+        mode="lines", line=dict(color=line_color, width=2.2),
+        fill="tonexty", fillcolor=fill_color,
+        name="", hovertemplate="$%{y:.2f}<extra></extra>",
     ))
     fig.update_layout(
         template="plotly_white",
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        height=400, margin=dict(t=10, b=30, l=10, r=10),
-        yaxis_title=None, xaxis_title=None,
+        height=360, margin=dict(t=16, b=24, l=8, r=8),
         showlegend=False,
         hovermode="x unified",
+        yaxis=dict(range=[baseline, ymax + pad]),
     )
-    fig.update_yaxes(gridcolor=CHART_GRID, zerolinecolor=CHART_GRID)
-    fig.update_xaxes(gridcolor=CHART_GRID)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_yaxes(
+        showgrid=False, zeroline=False, side="right",
+        nticks=4, tickprefix="$",
+        tickfont=dict(size=11, color="#878E96"),
+    )
+    fig.update_xaxes(
+        showgrid=False, nticks=6,
+        tickfont=dict(size=11, color="#878E96"),
+        showspikes=True, spikemode="across", spikesnap="cursor",
+        spikecolor="#C7CCD1", spikethickness=1, spikedash="solid",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 else:
     st.info(f"Price history for {ticker} unavailable.")
 

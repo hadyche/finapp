@@ -139,3 +139,12 @@ def test_normalize_openinsider_excludes_sales():
 def test_normalize_openinsider_missing_columns():
     assert normalize_openinsider_table(pd.DataFrame({"Foo": [1]})).empty
     assert normalize_openinsider_table(pd.DataFrame()).empty
+
+
+def test_fetch_top_insider_buys_returns_tuple_contract():
+    # Network is unreachable in the sandbox — the function must still
+    # return (empty df, diagnostic string), never raise.
+    from src.data.insider_leaderboard import fetch_top_insider_buys
+    df, detail = fetch_top_insider_buys(days=1, limit=1)
+    assert df.empty
+    assert isinstance(detail, str) and detail

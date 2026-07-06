@@ -50,7 +50,8 @@ def _naics_to_sector(naics) -> str:
         return "Other"
 
 
-def _award_payload(start_date, end_date, min_amount, page_size, page, new_awards_only):
+def _award_payload(start_date, end_date, min_amount, page_size, page, new_awards_only,
+                   max_amount=None):
     time_period = {
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
@@ -60,11 +61,14 @@ def _award_payload(start_date, end_date, min_amount, page_size, page, new_awards
         # returns decade-old contracts that merely had a recent modification,
         # with lifetime totals masquerading as fresh money.
         time_period["date_type"] = "new_awards_only"
+    amounts = {"lower_bound": min_amount}
+    if max_amount is not None:
+        amounts["upper_bound"] = max_amount
     return {
         "filters": {
             "time_period": [time_period],
             "award_type_codes": ["A", "B", "C", "D"],  # contracts only
-            "award_amounts": [{"lower_bound": min_amount}],
+            "award_amounts": [amounts],
         },
         "fields": [
             "Award ID",
@@ -89,6 +93,7 @@ def fetch_recent_awards(
     min_amount: float = 5_000_000,
     new_awards_only: bool = True,
     end_days_back: int = 0,
+    max_amount: float | None = None,
 ) -> pd.DataFrame:
     """
     Contract awards newly signed in the window, paginated up to `limit`
@@ -104,7 +109,8 @@ def fetch_recent_awards(
     page = 1
     while len(results) < limit:
         payload = _award_payload(start_date, end_date, min_amount,
-                                 page_size, page, new_awards_only)
+                                 page_size, page, new_awards_only,
+                                 max_amount=max_amount)
         try:
             resp = requests.post(
                 f"{USASPENDING_BASE}/search/spending_by_award/",
@@ -149,6 +155,36 @@ def fetch_recent_awards(
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
     df["sector"] = df["naics_code"].fillna("").astype(str).apply(_naics_to_sector)
     return df
+
+
+def fetch_awards_wide(
+    days_back: int = 30,
+    end_days_back: int = 0,
+    limit_per_band: int = 500,
+) -> pd.DataFrame:
+    """
+    Awards fetched in two dollar bands and merged: >= $5M, and $1M-$5M.
+    The API sorts by amount descending, so a single low-floor fetch would
+    fill its row budget with big deals and silently drop the small-deal
+    tail — exactly the deals that matter most for tiny companies
+    (a $2M award to an $80M company is a 2.5% event).
+    """
+    big = fetch_recent_awards(
+        days_back=days_back, limit=limit_per_band,
+        min_amount=5_000_000, end_days_back=end_days_back,
+    )
+    small = fetch_recent_awards(
+        days_back=days_back, limit=limit_per_band,
+        min_amount=1_000_000, max_amount=5_000_000,
+        end_days_back=end_days_back,
+    )
+    frames = [f for f in (big, small) if f is not None and not f.empty]
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    if "award_id" in df.columns:
+        df = df.drop_duplicates(subset=["award_id"])
+    return df.reset_index(drop=True)
 
 
 def match_awards_to_tickers(awards: pd.DataFrame, name_index: dict) -> pd.DataFrame:

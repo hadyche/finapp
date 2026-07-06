@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from datetime import datetime
 from src.ui.theme import inject_css, disclaimer
 from src.ui.components import info_popover, glossary_popover
-from src.data.gov_contracts import fetch_recent_awards, match_awards_to_tickers
+from src.data.gov_contracts import fetch_awards_wide, match_awards_to_tickers
 from src.data.ticker_map import load_sec_company_map, build_name_index, ticker_to_cik
 from src.data.stock_detail import get_market_stats, get_price_changes_since
 from src.data.insider_trades import insider_buys_for_cik
@@ -30,7 +30,7 @@ def _name_index():
 def _matched_awards(days_back: int, registry_ok: bool):
     # registry_ok is part of the cache key: a failed registry fetch must
     # not poison the awards cache with all-unmatched rows for 6 hours.
-    awards = fetch_recent_awards(days_back=days_back, limit=500, min_amount=5_000_000)
+    awards = fetch_awards_wide(days_back=days_back)
     scanned_at = datetime.now().isoformat()
     if awards.empty:
         return awards, scanned_at
