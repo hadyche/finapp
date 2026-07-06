@@ -7,23 +7,46 @@ import plotly.graph_objects as go
 from src.ui.theme import inject_css, page_header, disclaimer, ACCENT, DOWN
 from src.ui.components import glossary_popover
 from src.data.favorites import is_favorite, toggle_favorite
-from src.data.stock_detail import get_price_history, get_quote, get_news
+from src.data.stock_detail import get_price_history, get_quote, get_news, get_fundamental_context
 from src.data.gov_contracts import fed_dollar_summary
 from src.data.ticker_map import load_sec_company_map, build_name_index, ticker_to_cik
 from src.data.insider_trades import insider_buys_for_cik
 
 inject_css()
 
-ticker = st.session_state.get("selected_ticker")
+# Resolve the ticker from navigation state OR the URL, so refreshing,
+# bookmarking, and sharing a detail page all work
+_qp = ""
+try:
+    _qp = str(st.query_params.get("t", "")).upper().strip()
+except Exception:
+    pass
+# URL wins: feed rows navigate by link, so the URL is always the fresh intent
+ticker = _qp or st.session_state.get("selected_ticker") or None
+if ticker:
+    st.session_state.selected_ticker = ticker
 
 if not ticker:
-    page_header("Stock Details")
-    st.info("👈 Tap any stock on the Picks page to see everything about it.")
-    manual = st.text_input("Or type a stock's nickname (ticker):", placeholder="e.g. MRCY").upper().strip()
+    page_header("🔍 Look Up a Stock")
+    st.markdown('<div class="feed-section-sub">Type any stock\'s nickname (ticker) to see its price, '
+                'government money, insider buying, and how easy it is to trade.</div>', unsafe_allow_html=True)
+    manual = st.text_input("Ticker", placeholder="e.g. MRCY", label_visibility="collapsed").upper().strip()
     if manual:
         st.session_state.selected_ticker = manual
+        st.query_params["t"] = manual
         st.rerun()
+    st.caption("Or pick a stock from 💰 Today's Picks or 🎩 Smart Money — every row links here.")
     st.stop()
+
+# Keep the URL in sync so refresh/share always work
+try:
+    if st.query_params.get("t", "") != ticker:
+        st.query_params["t"] = ticker
+except Exception:
+    pass
+
+st.page_link("pages/1_Home.py", label="← Back to Today's Picks")
+st.caption("🔗 This page has its own web address — copy it from your browser bar to share or bookmark this stock.")
 
 # ── Top header with ticker, fav button, and quote ─────────────────────────────
 @st.cache_data(ttl=900)
@@ -194,7 +217,15 @@ with st.spinner("Reading government records…"):
 
 if fed["total"] > 0:
     cap = quote.get("market_cap")
-    f1, f2, f3 = st.columns(3)
+
+    @st.cache_data(ttl=86400, show_spinner=False)
+    def _fundamentals(t):
+        return get_fundamental_context([t]).get(t, {})
+
+    fund = _fundamentals(ticker)
+    revenue = fund.get("revenue")
+
+    f1, f2, f3, f4 = st.columns(4)
     f1.markdown(f"""<div class="stat-box">
         <div class="stat-label">Money won</div>
         <div class="stat-value">${fed['total']/1e6:.1f}M</div>
@@ -207,6 +238,11 @@ if fed["total"] > 0:
     f3.markdown(f"""<div class="stat-box">
         <div class="stat-label">Compared to company's value</div>
         <div class="stat-value">{impact}</div>
+    </div>""", unsafe_allow_html=True)
+    vs_rev = f"{fed['total']/revenue*100:.0f}%" if revenue else "—"
+    f4.markdown(f"""<div class="stat-box">
+        <div class="stat-label">Compared to a year of sales</div>
+        <div class="stat-value">{vs_rev}</div>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("**Which parts of the government paid them**")

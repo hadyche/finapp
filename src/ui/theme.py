@@ -112,6 +112,40 @@ header { background: transparent !important; box-shadow: none !important; }
     font-weight: 500;
 }
 
+/* Whole feed row is a link */
+.feed-link { text-decoration: none !important; color: inherit !important; display: block; cursor: pointer; }
+.feed-link:hover { text-decoration: none !important; }
+
+/* Hero card for the #1 pick */
+.hero-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px 14px 20px;
+    margin: 10px 0 18px 0;
+    transition: border-color 0.15s;
+}
+.hero-card:hover { border-color: var(--accent); }
+.hero-label {
+    color: var(--accent-strong);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.hero-ticker {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+}
+.hero-reason {
+    color: var(--text-2);
+    font-size: 0.88rem;
+    margin: 4px 0;
+}
+.hero-reason .check { color: var(--accent-strong); font-weight: 700; margin-right: 8px; }
+
 /* Feed rows */
 .feed-row {
     display: flex;

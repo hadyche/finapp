@@ -6,6 +6,7 @@ company's entire market value.
 Pure logic — no network calls — so it is fully unit-testable offline.
 """
 
+import math
 import pandas as pd
 
 # Hard ceiling: no company above this market cap is ever shown.
@@ -101,6 +102,64 @@ def build_contract_signals(
     if out.empty:
         return out
     return out.sort_values("impact_ratio", ascending=False).reset_index(drop=True)
+
+
+def score_signal_row(
+    impact_ratio: float,
+    days_since_award: float | None,
+    pct_change_since: float | None,
+    adv_usd: float | None,
+    confidence: str = "",
+    n_smart_signals: int = 0,
+) -> tuple[float, list[str]]:
+    """
+    Combines everything we know about a pick into one 0-100 Signal
+    Strength score, with plain-language reasons. Pure — unit-testable.
+
+    Components:
+      deal size vs company   up to 45  (25%+ of company value maxes it)
+      freshness              up to 15  (decays over ~a month)
+      not priced in yet      up to 15  (0 if the stock already jumped 25%+)
+      easy to trade          up to 10
+      exact name match       up to  5
+      smart money agrees     up to 20  (insiders / senators buying too)
+    """
+    score = 0.0
+    reasons: list[str] = []
+
+    ratio_pts = min(float(impact_ratio) / 0.25, 1.0) * 45
+    score += ratio_pts
+    reasons.append(f"Deal = {impact_ratio*100:.0f}% of the whole company")
+
+    if days_since_award is not None and days_since_award >= 0:
+        fresh_pts = 15 * math.exp(-float(days_since_award) / 30)
+        score += fresh_pts
+        if days_since_award <= 7:
+            reasons.append(f"Signed {int(days_since_award)} day{'s' if days_since_award != 1 else ''} ago — very fresh")
+
+    if pct_change_since is None:
+        score += 5  # unknown reaction — mildly positive (nobody noticed?)
+    elif pct_change_since < 10:
+        score += 15
+        reasons.append("Stock has barely moved yet — the market may not have noticed")
+    elif pct_change_since < 25:
+        score += 7
+    else:
+        reasons.append(f"Already jumped +{pct_change_since:.0f}% — you may be late")
+
+    if adv_usd is not None and adv_usd >= 1_000_000:
+        score += 10
+    elif adv_usd is not None:
+        reasons.append("⚠ Hard to trade — very few daily buyers/sellers")
+
+    if str(confidence) == "exact":
+        score += 5
+
+    if n_smart_signals > 0:
+        score += min(int(n_smart_signals), 2) * 10
+        reasons.append("🎯 Smart money is buying this too")
+
+    return min(round(score, 1), 100.0), reasons
 
 
 def rank_signals(*frames: pd.DataFrame) -> pd.DataFrame:
